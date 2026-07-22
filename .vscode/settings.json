@@ -21,6 +21,7 @@
                                   "**":  true
                               },
     "files.readonlyExclude":  {
-                                  "**/.env*":  true
+                                  "**/.env*":  true,
+                                  "**/src/modules/inventory/**":  true
                               }
 }
