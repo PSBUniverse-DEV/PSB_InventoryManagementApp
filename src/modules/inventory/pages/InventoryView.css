@@ -1,0 +1,466 @@
+    /**
+ * Inventory Module Styles
+ * Uses PSBUniverse design tokens from src/styles/variables.css.
+ */
+
+.inventory-module-layout {
+  font-family: 'Inter', sans-serif;
+  background: var(--psb-bg);
+  min-height: 600px;
+  display: flex;
+  color: var(--psb-text);
+  margin: -1.25rem -1.5rem;
+  width: calc(100% + 3rem);
+}
+
+/* ─── Sidebar ─── */
+
+.inventory-sidebar {
+  width: 220px;
+  background: var(--psb-ink);
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 22px 16px;
+}
+
+.inventory-sidebar-brand {
+  background-image: repeating-linear-gradient(
+      0deg,
+      rgba(255,255,255,0.04) 0px,
+      rgba(255,255,255,0.04) 1px,
+      transparent 1px,
+      transparent 22px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      rgba(255,255,255,0.04) 0px,
+      rgba(255,255,255,0.04) 1px,
+      transparent 1px,
+      transparent 22px
+    );
+  padding: 10px 10px 14px;
+  margin-bottom: 20px;
+  border-bottom: 1px solid #333D48;
+}
+
+.inventory-sidebar-title {
+  font-family: 'Oswald', sans-serif;
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--psb-gold);
+  letter-spacing: 0.03em;
+}
+
+.inventory-sidebar-subtitle {
+  font-family: 'Oswald', sans-serif;
+  font-size: 11px;
+  color: #9AA5B1;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.inventory-sidebar-region {
+  font-size: 11px;
+  color: #5F6B78;
+  margin-top: 4px;
+}
+
+.inventory-sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.inventory-sidebar-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 10px;
+  border-radius: 5px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: #C4CAD1;
+  font-size: 13.5px;
+  font-weight: 500;
+  text-align: left;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.inventory-sidebar-nav-item:hover {
+  background: #2A3541;
+  color: var(--psb-gold);
+}
+
+.inventory-sidebar-nav-item.is-active {
+  background: #2A3541;
+  color: var(--psb-gold);
+}
+
+.inventory-sidebar-footer {
+  margin-top: auto;
+  font-size: 11px;
+  color: #5F6B78;
+  padding-top: 16px;
+  border-top: 1px solid #333D48;
+}
+
+/* ─── Main content ─── */
+
+.inventory-main {
+  flex: 1;
+  min-width: 0;
+  padding: 26px 32px;
+  overflow-y: auto;
+}
+
+.inventory-page-title {
+  font-family: 'Oswald', sans-serif;
+  font-size: 24px;
+  font-weight: 600;
+  margin-bottom: 4px;
+  text-transform: uppercase;
+  color: var(--psb-text);
+}
+
+.inventory-page-desc {
+  color: var(--psb-muted);
+  font-size: 14px;
+  margin-bottom: 20px;
+}
+
+/* ─── Toast ─── */
+
+.inventory-toast {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  background: var(--psb-ink);
+  color: #fff;
+  padding: 10px 16px;
+  border-radius: 6px;
+  font-size: 13.5px;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+}
+
+/* ─── Stat row ─── */
+
+.inventory-stat-row {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-bottom: 26px;
+}
+
+/* ─── Dashboard panels ─── */
+
+.inventory-dashboard-panels {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.inventory-panel {
+  flex: 1 1 320px;
+  background: var(--psb-surface);
+  border-radius: 6px;
+  border: 1px solid var(--psb-border);
+  padding: 18px;
+}
+
+.inventory-panel-heading {
+  font-family: 'Oswald', sans-serif;
+  font-size: 14px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--psb-muted);
+}
+
+.inventory-panel-heading--alert {
+  color: var(--psb-status-pending);
+}
+
+.inventory-panel-empty {
+  font-size: 13.5px;
+  color: var(--psb-muted);
+}
+
+.inventory-panel-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--psb-bg);
+  font-size: 13.5px;
+}
+
+.inventory-panel-row-meta {
+  color: var(--psb-muted);
+  font-size: 12px;
+}
+
+.inventory-panel-row-value {
+  font-family: 'IBM Plex Mono', monospace;
+  color: var(--psb-status-pending);
+  font-weight: 600;
+}
+
+.inventory-panel-row-date {
+  color: var(--psb-muted);
+  font-size: 11.5px;
+}
+
+/* ─── View header ─── */
+
+.inventory-view-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+/* ─── Filter row ─── */
+
+.inventory-filter-row {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 18px;
+  flex-wrap: wrap;
+}
+
+.inventory-search-wrap {
+  position: relative;
+  flex: 1 1 220px;
+}
+
+.inventory-search-icon {
+  position: absolute;
+  left: 10px;
+  top: 10px;
+  color: var(--psb-muted);
+  pointer-events: none;
+}
+
+.inventory-search-input {
+  width: 100%;
+  padding: 9px 11px 9px 32px;
+  border-radius: 5px;
+  border: 1.5px solid var(--psb-border);
+  font-family: 'Inter', sans-serif;
+  font-size: 14px;
+  background: var(--psb-surface);
+  box-sizing: border-box;
+}
+
+.inventory-search-input:focus {
+  outline: none;
+  border-color: var(--psb-brand);
+  box-shadow: 0 0 0 2px rgba(29, 89, 127, 0.15);
+}
+
+.inventory-filter-select {
+  padding: 9px 11px;
+  border-radius: 5px;
+  border: 1.5px solid var(--psb-border);
+  font-family: 'Inter', sans-serif;
+  font-size: 14px;
+  background: var(--psb-surface);
+  width: 210px;
+  box-sizing: border-box;
+}
+
+.inventory-filter-select:focus {
+  outline: none;
+  border-color: var(--psb-brand);
+  box-shadow: 0 0 0 2px rgba(29, 89, 127, 0.15);
+}
+
+/* ─── Table ─── */
+
+.inventory-table-wrap {
+  background: var(--psb-surface);
+  border-radius: 6px;
+  border: 1px solid var(--psb-border);
+  overflow: hidden;
+}
+
+.inventory-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13.5px;
+}
+
+.inventory-table th {
+  padding: 10px 14px;
+  font-family: 'Oswald', sans-serif;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--psb-muted);
+  background: var(--psb-bg);
+  text-align: left;
+  font-weight: 500;
+}
+
+.inventory-table td {
+  padding: 10px 14px;
+  border-top: 1px solid var(--psb-bg);
+}
+
+.inventory-td-name {
+  font-weight: 600;
+}
+
+.inventory-td-sku {
+  font-family: 'IBM Plex Mono', monospace;
+  color: var(--psb-muted);
+}
+
+.inventory-td-mono {
+  font-family: 'IBM Plex Mono', monospace;
+}
+
+.inventory-td-date {
+  color: var(--psb-muted);
+  font-size: 12px;
+}
+
+.inventory-td-muted {
+  color: var(--psb-muted);
+}
+
+.inventory-td-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.inventory-empty {
+  padding: 20px;
+  text-align: center;
+  color: var(--psb-muted);
+}
+
+.inventory-mono {
+  font-family: 'IBM Plex Mono', monospace;
+}
+
+/* ─── Stock badge ─── */
+
+.inventory-stock-badge {
+  font-size: 11.5px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 3px;
+}
+
+.inventory-stock-badge.is-low {
+  background: var(--psb-status-pending-bg);
+  color: var(--psb-status-pending);
+}
+
+.inventory-stock-badge.is-ok {
+  background: var(--psb-status-active-bg);
+  color: var(--psb-status-active);
+}
+
+/* ─── Button ─── */
+
+.inventory-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: 4px;
+  padding: 6px 10px;
+  font-size: 12.5px;
+  font-weight: 600;
+  font-family: 'Inter', sans-serif;
+  cursor: pointer;
+  border: 1.5px solid transparent;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.inventory-btn--primary {
+  background: var(--psb-gold);
+  color: var(--psb-ink);
+  border: none;
+}
+
+.inventory-btn--primary:hover {
+  background: #b8925e;
+}
+
+.inventory-btn--ghost {
+  background: transparent;
+  color: var(--psb-text);
+  border: 1.5px solid var(--psb-border);
+  flex: none;
+  padding: 5px 8px;
+}
+
+.inventory-btn--ghost:hover {
+  border-color: var(--psb-brand);
+  color: var(--psb-brand);
+}
+
+/* ─── Card grid ─── */
+
+.inventory-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 14px;
+}
+
+/* ─── Warehouse card ─── */
+
+.inventory-wh-card {
+  background: var(--psb-surface);
+  border: 1px solid var(--psb-border);
+  border-radius: 6px;
+  padding: 18px;
+}
+
+.inventory-wh-card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.inventory-wh-card-name {
+  font-weight: 600;
+  font-size: 15px;
+}
+
+.inventory-wh-card-address {
+  font-size: 12.5px;
+  color: var(--psb-muted);
+  margin-bottom: 12px;
+}
+
+.inventory-wh-card-manager {
+  font-size: 12.5px;
+  color: var(--psb-muted);
+  margin-bottom: 12px;
+}
+
+.inventory-wh-card-stats {
+  display: flex;
+  gap: 14px;
+  font-size: 12.5px;
+  border-top: 1px solid var(--psb-bg);
+  padding-top: 10px;
+}
+
+.inventory-wh-card-low {
+  color: var(--psb-status-pending);
+}

@@ -2,8 +2,7 @@
  * Client Component — InventoryView.jsx
  *
  * Adapted from the Strata Tracker inventory management layout.
- * Manages materials, equipment, warehouses, and activity log
- * with client-side persistence via localStorage.
+ * Uses PSBUniverse design tokens from src/styles/variables.css.
  *
  * SSO AUTHENTICATION:
  *   - Use useAuth() from "@/core/auth/useAuth" to get current user session
@@ -16,6 +15,7 @@
  */
 "use client";
 
+import "./InventoryView.css";
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import {
   LayoutDashboard, Boxes, HardHat, Warehouse, ClipboardList, Plus, Search,
@@ -78,12 +78,12 @@ function seedData() {
   return { warehouses, items, transactions };
 }
 
-const catColor = (cat) => cat === "Equipment" ? "#B5652B" : "#2F6B4F";
+const catColor = (cat) => cat === "Equipment" ? "var(--psb-status-pending)" : "var(--psb-status-active)";
 
 function StatCard({ label, value, accent }) {
   return (
     <div style={{
-      background: "#1C232C", borderRadius: 6, padding: "16px 18px",
+      background: "var(--psb-ink)", borderRadius: 6, padding: "16px 18px",
       display: "flex", flexDirection: "column", gap: 6, flex: "1 1 160px", minWidth: 150,
     }}>
       <span style={{
@@ -92,7 +92,7 @@ function StatCard({ label, value, accent }) {
       }}>{label}</span>
       <span style={{
         fontFamily: "'IBM Plex Mono',monospace", fontSize: 28, fontWeight: 600,
-        color: accent || "#F2A900",
+        color: accent || "var(--psb-gold)",
       }}>{value}</span>
     </div>
   );
@@ -100,15 +100,19 @@ function StatCard({ label, value, accent }) {
 
 function TagCard({ item, warehouseName, onCheckout, onCheckin, onTransfer }) {
   const color = catColor(item.category);
-  const statusColor = item.status === "Available" ? "#2F6B4F" : item.status === "In Use" ? "#B5652B" : "#8A8478";
+  const statusColor = item.status === "Available"
+    ? "var(--psb-status-active)"
+    : item.status === "In Use"
+      ? "var(--psb-status-pending)"
+      : "var(--psb-muted)";
   return (
     <div style={{
-      position: "relative", background: "#FFFFFF", border: "2px dashed #C9C2B2",
+      position: "relative", background: "var(--psb-surface)", border: "2px dashed var(--psb-border)",
       borderRadius: 6, padding: "18px 16px 16px", display: "flex", flexDirection: "column", gap: 8,
     }}>
       <div style={{
         position: "absolute", top: -9, left: 18, width: 16, height: 16, borderRadius: "50%",
-        background: "#EDEAE1", border: "2px dashed #C9C2B2",
+        background: "var(--psb-bg)", border: "2px dashed var(--psb-border)",
       }} />
       <div style={{
         position: "absolute", top: 10, right: 12, fontFamily: "'Oswald',sans-serif",
@@ -117,10 +121,10 @@ function TagCard({ item, warehouseName, onCheckout, onCheckin, onTransfer }) {
         transform: "rotate(-6deg)", textTransform: "uppercase",
       }}>{item.category === "Equipment" ? "EQP" : "MAT"}</div>
       <div style={{ marginTop: 6 }}>
-        <div style={{ fontFamily: "'Inter',sans-serif", fontWeight: 600, fontSize: 15, color: "#1C232C" }}>{item.name}</div>
-        <div style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 12, color: "#8A8478", marginTop: 2 }}>{item.sku}</div>
+        <div style={{ fontFamily: "'Inter',sans-serif", fontWeight: 600, fontSize: 15, color: "var(--psb-text)" }}>{item.name}</div>
+        <div style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 12, color: "var(--psb-muted)", marginTop: 2 }}>{item.sku}</div>
       </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, color: "#5B6470" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, color: "var(--psb-muted)" }}>
         <MapPin size={13} /> {warehouseName}
       </div>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 4 }}>
@@ -129,19 +133,19 @@ function TagCard({ item, warehouseName, onCheckout, onCheckin, onTransfer }) {
           letterSpacing: "0.04em",
         }}>{item.status}</span>
         {item.assignedTo && (
-          <span style={{ fontSize: 12, color: "#5B6470", display: "flex", alignItems: "center", gap: 4 }}>
+          <span style={{ fontSize: 12, color: "var(--psb-muted)", display: "flex", alignItems: "center", gap: 4 }}>
             <User size={12} /> {item.assignedTo}
           </span>
         )}
       </div>
       <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
         {item.status === "Available" && (
-          <button onClick={() => onCheckout(item)} style={btnStyle("#1C232C", "#fff")}>Check out</button>
+          <button onClick={() => onCheckout(item)} style={btnStyle("var(--psb-ink)", "#fff")}>Check out</button>
         )}
         {item.status === "In Use" && (
-          <button onClick={() => onCheckin(item)} style={btnStyle("#2F6B4F", "#fff")}>Check in</button>
+          <button onClick={() => onCheckin(item)} style={btnStyle("var(--psb-status-active)", "#fff")}>Check in</button>
         )}
-        <button onClick={() => onTransfer(item)} style={btnStyle("transparent", "#1C232C", "#C9C2B2")}>
+        <button onClick={() => onTransfer(item)} style={btnStyle("transparent", "var(--psb-text)", "var(--psb-border)")}>
           <ArrowRightLeft size={13} />
         </button>
       </div>
@@ -159,19 +163,19 @@ const btnStyle = (bg, color, border) => ({
 function Modal({ title, onClose, children }) {
   return (
     <div style={{
-      position: "fixed", inset: 0, background: "rgba(28,35,44,0.55)", display: "flex",
+      position: "fixed", inset: 0, background: "rgba(16,39,54,0.55)", display: "flex",
       alignItems: "center", justifyContent: "center", zIndex: 50, padding: 16,
     }} onClick={onClose}>
       <div style={{
-        background: "#fff", borderRadius: 8, width: "100%", maxWidth: 460,
+        background: "var(--psb-surface)", borderRadius: 8, width: "100%", maxWidth: 460,
         maxHeight: "90vh", overflowY: "auto", padding: 24,
       }} onClick={e => e.stopPropagation()}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
           <h3 style={{
-            fontFamily: "'Oswald',sans-serif", fontSize: 18, fontWeight: 600, color: "#1C232C",
+            fontFamily: "'Oswald',sans-serif", fontSize: 18, fontWeight: 600, color: "var(--psb-text)",
             textTransform: "uppercase", letterSpacing: "0.02em", margin: 0,
           }}>{title}</h3>
-          <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: "#8A8478" }}>
+          <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--psb-muted)" }}>
             <X size={20} />
           </button>
         </div>
@@ -182,12 +186,12 @@ function Modal({ title, onClose, children }) {
 }
 
 const inputStyle = {
-  width: "100%", padding: "9px 11px", borderRadius: 5, border: "1.5px solid #D8D3C6",
+  width: "100%", padding: "9px 11px", borderRadius: 5, border: "1.5px solid var(--psb-border)",
   fontFamily: "'Inter',sans-serif", fontSize: 14, marginBottom: 14, boxSizing: "border-box",
-  background: "#FAF9F5",
+  background: "var(--psb-surface)",
 };
 const labelStyle = {
-  fontSize: 12, fontWeight: 600, color: "#5B6470", marginBottom: 5, display: "block",
+  fontSize: 12, fontWeight: 600, color: "var(--psb-muted)", marginBottom: 5, display: "block",
   textTransform: "uppercase", letterSpacing: "0.03em",
 };
 
@@ -342,7 +346,7 @@ export default function InventoryView() {
   };
 
   if (!loaded) {
-    return <div style={{ padding: 40, fontFamily: "'Inter',sans-serif", color: "#5B6470" }}>Loading inventory...</div>;
+    return <div style={{ padding: 40, fontFamily: "'Inter',sans-serif", color: "var(--psb-muted)" }}>Loading inventory...</div>;
   }
 
   const navItems = [
@@ -354,82 +358,75 @@ export default function InventoryView() {
   ];
 
   return (
-    <div style={{ fontFamily: "'Inter',sans-serif", background: "#EDEAE1", minHeight: 600, display: "flex", color: "#1C232C", margin: "-1.25rem -1.5rem", width: "calc(100% + 3rem)" }}>
+    <div className="inventory-module-layout">
       <style>{FONT_IMPORT}</style>
 
-      <div style={{
-        width: 220, background: "#1C232C", flexShrink: 0, display: "flex", flexDirection: "column",
-        padding: "22px 16px",
-      }} className="sidebar-desktop">
-        <div style={{
-          backgroundImage: "repeating-linear-gradient(0deg, rgba(255,255,255,0.04) 0px, rgba(255,255,255,0.04) 1px, transparent 1px, transparent 22px), repeating-linear-gradient(90deg, rgba(255,255,255,0.04) 0px, rgba(255,255,255,0.04) 1px, transparent 1px, transparent 22px)",
-          padding: "10px 10px 14px", marginBottom: 20, borderBottom: "1px solid #333D48",
-        }}>
-          <div style={{ fontFamily: "'Oswald',sans-serif", fontSize: 17, fontWeight: 700, color: "#F2A900", letterSpacing: "0.03em" }}>STRATA</div>
-          <div style={{ fontFamily: "'Oswald',sans-serif", fontSize: 11, color: "#9AA5B1", letterSpacing: "0.12em", textTransform: "uppercase" }}>Equipment & Material Tracker</div>
-          <div style={{ fontSize: 11, color: "#5F6B78", marginTop: 4 }}>Dallas–Fort Worth, TX</div>
+      {/* Sidebar */}
+      <div className="inventory-sidebar">
+        <div className="inventory-sidebar-brand">
+          <div className="inventory-sidebar-title">STRATA</div>
+          <div className="inventory-sidebar-subtitle">Equipment & Material Tracker</div>
+          <div className="inventory-sidebar-region">Dallas–Fort Worth, TX</div>
         </div>
-        <nav style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+        <nav className="inventory-sidebar-nav">
           {navItems.map(n => (
-            <button key={n.id} onClick={() => setView(n.id)} style={{
-              display: "flex", alignItems: "center", gap: 10, padding: "9px 10px", borderRadius: 5,
-              background: view === n.id ? "#2A3541" : "transparent", border: "none", cursor: "pointer",
-              color: view === n.id ? "#F2A900" : "#C4CAD1", fontSize: 13.5, fontWeight: 500, textAlign: "left",
-            }}>
+            <button
+              key={n.id}
+              onClick={() => setView(n.id)}
+              className={`inventory-sidebar-nav-item${view === n.id ? " is-active" : ""}`}
+            >
               <n.icon size={16} /> {n.label}
             </button>
           ))}
         </nav>
-        <div style={{ marginTop: "auto", fontSize: 11, color: "#5F6B78", paddingTop: 16, borderTop: "1px solid #333D48" }}>
+        <div className="inventory-sidebar-footer">
           Data shared across all Strata team members using this app.
         </div>
       </div>
 
-      <div style={{ flex: 1, minWidth: 0, padding: "26px 32px" }}>
+      {/* Main content */}
+      <div className="inventory-main">
         {toast && (
-          <div style={{
-            position: "fixed", top: 20, right: 20, background: "#1C232C", color: "#fff", padding: "10px 16px",
-            borderRadius: 6, fontSize: 13.5, zIndex: 100, display: "flex", alignItems: "center", gap: 8,
-          }}>
-            <PackageCheck size={15} color="#F2A900" /> {toast}
+          <div className="inventory-toast">
+            <PackageCheck size={15} color="var(--psb-gold)" /> {toast}
           </div>
         )}
 
         {view === "dashboard" && (
           <div>
-            <h1 style={{ fontFamily: "'Oswald',sans-serif", fontSize: 24, fontWeight: 600, marginBottom: 4, textTransform: "uppercase" }}>Dashboard</h1>
-            <p style={{ color: "#5B6470", fontSize: 14, marginBottom: 20 }}>Live overview across all warehouse locations.</p>
-            <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginBottom: 26 }}>
+            <h1 className="inventory-page-title">Dashboard</h1>
+            <p className="inventory-page-desc">Live overview across all warehouse locations.</p>
+            <div className="inventory-stat-row">
               <StatCard label="Total SKUs" value={data.items.length} />
-              <StatCard label="Low stock alerts" value={lowStock.length} accent={lowStock.length ? "#E0632E" : "#F2A900"} />
+              <StatCard label="Low stock alerts" value={lowStock.length} accent={lowStock.length ? "var(--psb-status-suspended)" : "var(--psb-gold)"} />
               <StatCard label="Equipment checked out" value={checkedOut} />
               <StatCard label="Active locations" value={data.warehouses.length} />
             </div>
-            <div style={{ display: "flex", gap: 20, flexWrap: "wrap" }}>
-              <div style={{ flex: "1 1 320px", background: "#fff", borderRadius: 6, border: "1px solid #D8D3C6", padding: 18 }}>
-                <h3 style={{ fontFamily: "'Oswald',sans-serif", fontSize: 14, textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 12, display: "flex", alignItems: "center", gap: 6, color: "#B5652B" }}>
+            <div className="inventory-dashboard-panels">
+              <div className="inventory-panel">
+                <h3 className="inventory-panel-heading inventory-panel-heading--alert">
                   <AlertTriangle size={15} /> Low stock alerts
                 </h3>
-                {lowStock.length === 0 && <p style={{ fontSize: 13.5, color: "#8A8478" }}>All materials are above their reorder threshold.</p>}
+                {lowStock.length === 0 && <p className="inventory-panel-empty">All materials are above their reorder threshold.</p>}
                 {lowStock.map(item => (
-                  <div key={item.id} style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid #F0EEE7", fontSize: 13.5 }}>
+                  <div key={item.id} className="inventory-panel-row">
                     <div>
                       <div style={{ fontWeight: 600 }}>{item.name}</div>
-                      <div style={{ color: "#8A8478", fontSize: 12 }}>{whName(item.warehouseId)}</div>
+                      <div className="inventory-panel-row-meta">{whName(item.warehouseId)}</div>
                     </div>
-                    <div style={{ fontFamily: "'IBM Plex Mono',monospace", color: "#B5652B", fontWeight: 600 }}>{item.quantity}/{item.minThreshold} {item.unit}</div>
+                    <div className="inventory-panel-row-value">{item.quantity}/{item.minThreshold} {item.unit}</div>
                   </div>
                 ))}
               </div>
-              <div style={{ flex: "1 1 320px", background: "#fff", borderRadius: 6, border: "1px solid #D8D3C6", padding: 18 }}>
-                <h3 style={{ fontFamily: "'Oswald',sans-serif", fontSize: 14, textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 12 }}>Recent activity</h3>
+              <div className="inventory-panel">
+                <h3 className="inventory-panel-heading">Recent activity</h3>
                 {data.transactions.slice(0, 6).map(tx => (
-                  <div key={tx.id} style={{ padding: "8px 0", borderBottom: "1px solid #F0EEE7", fontSize: 13 }}>
+                  <div key={tx.id} className="inventory-panel-row">
                     <div style={{ display: "flex", justifyContent: "space-between" }}>
                       <span style={{ fontWeight: 600 }}>{tx.type}</span>
-                      <span style={{ color: "#8A8478", fontSize: 11.5 }}>{new Date(tx.date).toLocaleString()}</span>
+                      <span className="inventory-panel-row-date">{new Date(tx.date).toLocaleString()}</span>
                     </div>
-                    <div style={{ color: "#5B6470" }}>{tx.itemName} — {tx.detail}</div>
+                    <div className="inventory-panel-row-meta">{tx.itemName} — {tx.detail}</div>
                   </div>
                 ))}
               </div>
@@ -439,35 +436,44 @@ export default function InventoryView() {
 
         {(view === "materials" || view === "equipment") && (
           <div>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 10 }}>
-              <h1 style={{ fontFamily: "'Oswald',sans-serif", fontSize: 24, fontWeight: 600, textTransform: "uppercase", margin: 0 }}>
+            <div className="inventory-view-header">
+              <h1 className="inventory-page-title" style={{ margin: 0 }}>
                 {view === "materials" ? "Materials" : "Equipment"}
               </h1>
-              <button onClick={() => openModal(view === "materials" ? "addMaterial" : "addEquipment")} style={{
-                ...btnStyle("#F2A900", "#1C232C"), flex: "none", padding: "9px 14px",
-              }}>
+              <button
+                onClick={() => openModal(view === "materials" ? "addMaterial" : "addEquipment")}
+                className="inventory-btn inventory-btn--primary"
+              >
                 <Plus size={14} /> Add {view === "materials" ? "material" : "equipment"}
               </button>
             </div>
-            <div style={{ display: "flex", gap: 10, marginBottom: 18, flexWrap: "wrap" }}>
-              <div style={{ position: "relative", flex: "1 1 220px" }}>
-                <Search size={15} style={{ position: "absolute", left: 10, top: 10, color: "#8A8478" }} />
-                <input placeholder="Search by name or SKU" value={search} onChange={e => setSearch(e.target.value)}
-                  style={{ ...inputStyle, marginBottom: 0, paddingLeft: 32 }} />
+            <div className="inventory-filter-row">
+              <div className="inventory-search-wrap">
+                <Search size={15} className="inventory-search-icon" />
+                <input
+                  placeholder="Search by name or SKU"
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  className="inventory-search-input"
+                />
               </div>
-              <select value={filterWh} onChange={e => setFilterWh(e.target.value)} style={{ ...inputStyle, marginBottom: 0, width: 210 }}>
+              <select
+                value={filterWh}
+                onChange={e => setFilterWh(e.target.value)}
+                className="inventory-filter-select"
+              >
                 <option value="all">All locations</option>
                 {data.warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
               </select>
             </div>
 
             {view === "materials" && (
-              <div style={{ background: "#fff", borderRadius: 6, border: "1px solid #D8D3C6", overflow: "hidden" }}>
-                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13.5 }}>
+              <div className="inventory-table-wrap">
+                <table className="inventory-table">
                   <thead>
-                    <tr style={{ background: "#F5F3EC", textAlign: "left" }}>
+                    <tr>
                       {["Name", "SKU", "Location", "Quantity", "Status", ""].map(h => (
-                        <th key={h} style={{ padding: "10px 14px", fontFamily: "'Oswald',sans-serif", fontSize: 11, textTransform: "uppercase", letterSpacing: "0.05em", color: "#5B6470" }}>{h}</th>
+                        <th key={h}>{h}</th>
                       ))}
                     </tr>
                   </thead>
@@ -475,22 +481,21 @@ export default function InventoryView() {
                     {materials.map(item => {
                       const low = item.quantity <= item.minThreshold;
                       return (
-                        <tr key={item.id} style={{ borderTop: "1px solid #F0EEE7" }}>
-                          <td style={{ padding: "10px 14px", fontWeight: 600 }}>{item.name}</td>
-                          <td style={{ padding: "10px 14px", fontFamily: "'IBM Plex Mono',monospace", color: "#8A8478" }}>{item.sku}</td>
-                          <td style={{ padding: "10px 14px" }}>{whName(item.warehouseId)}</td>
-                          <td style={{ padding: "10px 14px", fontFamily: "'IBM Plex Mono',monospace" }}>{item.quantity} {item.unit}</td>
-                          <td style={{ padding: "10px 14px" }}>
-                            <span style={{
-                              fontSize: 11.5, fontWeight: 600, padding: "3px 8px", borderRadius: 3,
-                              background: low ? "#F9E3D8" : "#E3EEE7", color: low ? "#B5652B" : "#2F6B4F",
-                            }}>{low ? "Low stock" : "OK"}</span>
+                        <tr key={item.id}>
+                          <td className="inventory-td-name">{item.name}</td>
+                          <td className="inventory-td-sku">{item.sku}</td>
+                          <td>{whName(item.warehouseId)}</td>
+                          <td className="inventory-td-mono">{item.quantity} {item.unit}</td>
+                          <td>
+                            <span className={`inventory-stock-badge${low ? " is-low" : " is-ok"}`}>
+                              {low ? "Low stock" : "OK"}
+                            </span>
                           </td>
-                          <td style={{ padding: "10px 14px", display: "flex", gap: 6 }}>
-                            <button onClick={() => openModal("restock", item)} style={{ ...btnStyle("transparent", "#1C232C", "#D8D3C6"), flex: "none", padding: "5px 8px" }}>
+                          <td className="inventory-td-actions">
+                            <button onClick={() => openModal("restock", item)} className="inventory-btn inventory-btn--ghost">
                               <PackagePlus size={13} />
                             </button>
-                            <button onClick={() => openModal("transfer", item)} style={{ ...btnStyle("transparent", "#1C232C", "#D8D3C6"), flex: "none", padding: "5px 8px" }}>
+                            <button onClick={() => openModal("transfer", item)} className="inventory-btn inventory-btn--ghost">
                               <ArrowRightLeft size={13} />
                             </button>
                           </td>
@@ -498,7 +503,7 @@ export default function InventoryView() {
                       );
                     })}
                     {materials.length === 0 && (
-                      <tr><td colSpan={6} style={{ padding: 20, textAlign: "center", color: "#8A8478" }}>No materials match this view.</td></tr>
+                      <tr><td colSpan={6} className="inventory-empty">No materials match this view.</td></tr>
                     )}
                   </tbody>
                 </table>
@@ -506,14 +511,14 @@ export default function InventoryView() {
             )}
 
             {view === "equipment" && (
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(230px, 1fr))", gap: 14 }}>
+              <div className="inventory-card-grid">
                 {equipmentList.map(item => (
                   <TagCard key={item.id} item={item} warehouseName={whName(item.warehouseId)}
                     onCheckout={(it) => openModal("checkout", it)}
                     onCheckin={handleCheckin}
                     onTransfer={(it) => openModal("transfer", it)} />
                 ))}
-                {equipmentList.length === 0 && <p style={{ color: "#8A8478" }}>No equipment matches this view.</p>}
+                {equipmentList.length === 0 && <p style={{ color: "var(--psb-muted)" }}>No equipment matches this view.</p>}
               </div>
             )}
           </div>
@@ -521,30 +526,30 @@ export default function InventoryView() {
 
         {view === "warehouses" && (
           <div>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
-              <h1 style={{ fontFamily: "'Oswald',sans-serif", fontSize: 24, fontWeight: 600, textTransform: "uppercase", margin: 0 }}>Locations</h1>
-              <button onClick={() => openModal("addWarehouse")} style={{ ...btnStyle("#F2A900", "#1C232C"), flex: "none", padding: "9px 14px" }}>
+            <div className="inventory-view-header">
+              <h1 className="inventory-page-title" style={{ margin: 0 }}>Locations</h1>
+              <button onClick={() => openModal("addWarehouse")} className="inventory-btn inventory-btn--primary">
                 <Plus size={14} /> Add location
               </button>
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 14 }}>
+            <div className="inventory-card-grid">
               {data.warehouses.map(w => {
                 const items = data.items.filter(i => i.warehouseId === w.id);
                 const matCount = items.filter(i => i.category === "Material").length;
                 const eqCount = items.filter(i => i.category === "Equipment").length;
                 const low = items.filter(i => i.category === "Material" && i.quantity <= i.minThreshold).length;
                 return (
-                  <div key={w.id} style={{ background: "#fff", border: "1px solid #D8D3C6", borderRadius: 6, padding: 18 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-                      <Warehouse size={16} color="#F2A900" />
-                      <span style={{ fontWeight: 600, fontSize: 15 }}>{w.name}</span>
+                  <div key={w.id} className="inventory-wh-card">
+                    <div className="inventory-wh-card-header">
+                      <Warehouse size={16} color="var(--psb-gold)" />
+                      <span className="inventory-wh-card-name">{w.name}</span>
                     </div>
-                    <div style={{ fontSize: 12.5, color: "#5B6470", marginBottom: 12 }}>{w.address}, {w.city}</div>
-                    <div style={{ fontSize: 12.5, color: "#8A8478", marginBottom: 12 }}>Manager: {w.manager || "Unassigned"}</div>
-                    <div style={{ display: "flex", gap: 14, fontSize: 12.5, borderTop: "1px solid #F0EEE7", paddingTop: 10 }}>
-                      <span><b style={{ fontFamily: "'IBM Plex Mono',monospace" }}>{matCount}</b> materials</span>
-                      <span><b style={{ fontFamily: "'IBM Plex Mono',monospace" }}>{eqCount}</b> equipment</span>
-                      {low > 0 && <span style={{ color: "#B5652B" }}><b style={{ fontFamily: "'IBM Plex Mono',monospace" }}>{low}</b> low stock</span>}
+                    <div className="inventory-wh-card-address">{w.address}, {w.city}</div>
+                    <div className="inventory-wh-card-manager">Manager: {w.manager || "Unassigned"}</div>
+                    <div className="inventory-wh-card-stats">
+                      <span><b className="inventory-mono">{matCount}</b> materials</span>
+                      <span><b className="inventory-mono">{eqCount}</b> equipment</span>
+                      {low > 0 && <span className="inventory-wh-card-low"><b className="inventory-mono">{low}</b> low stock</span>}
                     </div>
                   </div>
                 );
@@ -555,24 +560,24 @@ export default function InventoryView() {
 
         {view === "log" && (
           <div>
-            <h1 style={{ fontFamily: "'Oswald',sans-serif", fontSize: 24, fontWeight: 600, textTransform: "uppercase", marginBottom: 18 }}>Activity log</h1>
-            <div style={{ background: "#fff", borderRadius: 6, border: "1px solid #D8D3C6", overflow: "hidden" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13.5 }}>
+            <h1 className="inventory-page-title">Activity log</h1>
+            <div className="inventory-table-wrap">
+              <table className="inventory-table">
                 <thead>
-                  <tr style={{ background: "#F5F3EC", textAlign: "left" }}>
+                  <tr>
                     {["Date", "Type", "Item", "Detail", "Location"].map(h => (
-                      <th key={h} style={{ padding: "10px 14px", fontFamily: "'Oswald',sans-serif", fontSize: 11, textTransform: "uppercase", letterSpacing: "0.05em", color: "#5B6470" }}>{h}</th>
+                      <th key={h}>{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
                   {data.transactions.map(tx => (
-                    <tr key={tx.id} style={{ borderTop: "1px solid #F0EEE7" }}>
-                      <td style={{ padding: "10px 14px", color: "#8A8478", fontSize: 12 }}>{new Date(tx.date).toLocaleString()}</td>
-                      <td style={{ padding: "10px 14px", fontWeight: 600 }}>{tx.type}</td>
-                      <td style={{ padding: "10px 14px" }}>{tx.itemName}</td>
-                      <td style={{ padding: "10px 14px", color: "#5B6470" }}>{tx.detail}</td>
-                      <td style={{ padding: "10px 14px" }}>{tx.warehouseName}</td>
+                    <tr key={tx.id}>
+                      <td className="inventory-td-date">{new Date(tx.date).toLocaleString()}</td>
+                      <td style={{ fontWeight: 600 }}>{tx.type}</td>
+                      <td>{tx.itemName}</td>
+                      <td className="inventory-td-muted">{tx.detail}</td>
+                      <td>{tx.warehouseName}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -582,13 +587,14 @@ export default function InventoryView() {
         )}
       </div>
 
+      {/* Modals */}
       {modal === "addWarehouse" && (
         <Modal title="Add location" onClose={closeModal}>
           <Field label="Location name"><input style={inputStyle} value={form.name || ""} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="e.g. Plano Equipment Yard" /></Field>
           <Field label="Address"><input style={inputStyle} value={form.address || ""} onChange={e => setForm({ ...form, address: e.target.value })} placeholder="Street address" /></Field>
           <Field label="City"><input style={inputStyle} value={form.city || ""} onChange={e => setForm({ ...form, city: e.target.value })} placeholder="Plano, TX" /></Field>
           <Field label="Manager"><input style={inputStyle} value={form.manager || ""} onChange={e => setForm({ ...form, manager: e.target.value })} placeholder="Name" /></Field>
-          <button onClick={handleAddWarehouse} style={{ ...btnStyle("#F2A900", "#1C232C"), width: "100%", padding: 10 }}>Add location</button>
+          <button onClick={handleAddWarehouse} className="inventory-btn inventory-btn--primary" style={{ width: "100%", padding: 10, justifyContent: "center" }}>Add location</button>
         </Modal>
       )}
 
@@ -610,7 +616,7 @@ export default function InventoryView() {
               <Field label="Unit cost ($)"><input type="number" style={inputStyle} value={form.cost || ""} onChange={e => setForm({ ...form, cost: e.target.value })} /></Field>
             </>
           )}
-          <button onClick={() => handleAddItem(modal === "addMaterial" ? "Material" : "Equipment")} style={{ ...btnStyle("#F2A900", "#1C232C"), width: "100%", padding: 10 }}>
+          <button onClick={() => handleAddItem(modal === "addMaterial" ? "Material" : "Equipment")} className="inventory-btn inventory-btn--primary" style={{ width: "100%", padding: 10, justifyContent: "center" }}>
             Add {modal === "addMaterial" ? "material" : "equipment"}
           </button>
         </Modal>
@@ -618,15 +624,15 @@ export default function InventoryView() {
 
       {modal === "restock" && (
         <Modal title={`Restock: ${form.name}`} onClose={closeModal}>
-          <p style={{ fontSize: 13.5, color: "#5B6470", marginBottom: 14 }}>Current quantity: <b>{form.quantity} {form.unit}</b> at {whName(form.warehouseId)}</p>
+          <p style={{ fontSize: 13.5, color: "var(--psb-muted)", marginBottom: 14 }}>Current quantity: <b>{form.quantity} {form.unit}</b> at {whName(form.warehouseId)}</p>
           <Field label={`Quantity to add (${form.unit})`}><input type="number" style={inputStyle} value={form.qty || ""} onChange={e => setForm({ ...form, qty: e.target.value })} /></Field>
-          <button onClick={handleRestock} style={{ ...btnStyle("#F2A900", "#1C232C"), width: "100%", padding: 10 }}>Confirm restock</button>
+          <button onClick={handleRestock} className="inventory-btn inventory-btn--primary" style={{ width: "100%", padding: 10, justifyContent: "center" }}>Confirm restock</button>
         </Modal>
       )}
 
       {modal === "transfer" && (
         <Modal title={`Transfer: ${form.name}`} onClose={closeModal}>
-          <p style={{ fontSize: 13.5, color: "#5B6470", marginBottom: 14 }}>From <b>{whName(form.warehouseId)}</b></p>
+          <p style={{ fontSize: 13.5, color: "var(--psb-muted)", marginBottom: 14 }}>From <b>{whName(form.warehouseId)}</b></p>
           <Field label="Destination location">
             <select style={inputStyle} value={form.toWarehouseId || ""} onChange={e => setForm({ ...form, toWarehouseId: e.target.value })}>
               <option value="">Select destination</option>
@@ -638,15 +644,15 @@ export default function InventoryView() {
               <input type="number" style={inputStyle} value={form.qty || ""} onChange={e => setForm({ ...form, qty: e.target.value })} />
             </Field>
           )}
-          <button onClick={handleTransfer} style={{ ...btnStyle("#F2A900", "#1C232C"), width: "100%", padding: 10 }}>Confirm transfer</button>
+          <button onClick={handleTransfer} className="inventory-btn inventory-btn--primary" style={{ width: "100%", padding: 10, justifyContent: "center" }}>Confirm transfer</button>
         </Modal>
       )}
 
       {modal === "checkout" && (
         <Modal title={`Check out: ${form.name}`} onClose={closeModal}>
-          <p style={{ fontSize: 13.5, color: "#5B6470", marginBottom: 14 }}>At {whName(form.warehouseId)}</p>
+          <p style={{ fontSize: 13.5, color: "var(--psb-muted)", marginBottom: 14 }}>At {whName(form.warehouseId)}</p>
           <Field label="Assigned to"><input style={inputStyle} value={form.assignedTo || ""} onChange={e => setForm({ ...form, assignedTo: e.target.value })} placeholder="Crew member or supervisor name" /></Field>
-          <button onClick={handleCheckout} style={{ ...btnStyle("#F2A900", "#1C232C"), width: "100%", padding: 10 }}>Confirm check-out</button>
+          <button onClick={handleCheckout} className="inventory-btn inventory-btn--primary" style={{ width: "100%", padding: 10, justifyContent: "center" }}>Confirm check-out</button>
         </Modal>
       )}
     </div>
