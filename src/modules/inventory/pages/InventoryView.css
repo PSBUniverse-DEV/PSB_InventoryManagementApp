@@ -22,6 +22,12 @@
   display: flex;
   flex-direction: column;
   padding: 22px 16px;
+  margin: 12px 0 12px 12px;
+  border-radius: 10px;
+  max-height: calc(100vh - 24px);
+  position: sticky;
+  top: 12px;
+  align-self: flex-start;
 }
 
 .inventory-sidebar-brand {
