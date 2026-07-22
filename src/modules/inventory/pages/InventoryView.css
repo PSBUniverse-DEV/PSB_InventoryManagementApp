@@ -20,6 +20,8 @@
   background: var(--psb-ink);
   flex-shrink: 0;
   display: flex;
+  top:12px;
+  bottom:12px;
   flex-direction: column;
   padding: 22px 16px;
   margin: 0 0 0 0;
