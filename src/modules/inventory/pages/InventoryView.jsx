@@ -41,6 +41,7 @@ function seedData() {
     { id: w2, name: "Fort Worth Distribution Center", address: "1120 Mercantile Row", city: "Fort Worth, TX", manager: "T. Nguyen" },
     { id: w3, name: "Arlington Storage Facility", address: "890 Commerce Loop", city: "Arlington, TX", manager: "K. Douglas" },
   ];
+  
   const materials = [
     { name: "Lumber - 2x4x8 Stud", sku: "MAT-LUM-204", unit: "pcs", qty: 1400, min: 500, wh: w1, cost: 4.25 },
     { name: "Rebar - #4 Grade 60", sku: "MAT-REB-004", unit: "ft", qty: 3200, min: 1000, wh: w1, cost: 0.85 },

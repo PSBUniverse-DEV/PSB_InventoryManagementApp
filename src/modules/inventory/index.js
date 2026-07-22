@@ -56,15 +56,16 @@
  */
 const inventoryModule = {
   key: "inventory",
-  module_key: "inventory",          // ← change to your app key from Application Setup
+  module_key: "inventory",
   name: "Inventory",
-  description: "TODO: Describe what this module does.",
-  icon: "box",                        // ← pick from https://fontawesome.com/search?o=r&m=free
-  group_name: "TODO: Pick a sidebar group",
-  group_desc: "TODO: Describe this group",
-  order: 200,                         // ← adjust to control sidebar position
+  description: "Track and manage equipment, materials, and warehouse stock.",
+  icon: "box",
+  group_name: "Operations",
+  group_desc: "Tools for inventory and asset management.",
+  order: 200,
   routes: [
     { path: "/inventory", page: "InventoryPage" },
+    { path: "/inventory/configure", page: "InventoryConfigPage" },
   ],
 };
 
