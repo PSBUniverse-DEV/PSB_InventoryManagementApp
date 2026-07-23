@@ -39,7 +39,7 @@ function mapPayload(entityKey, payload) {
     is_active: payload?.is_active !== false,
   };
   if (entityKey === "units") {
-    base.abbreviation = payload?.key || null;
+    base.abbreviation  = payload?.key || null;
   } else {
     base.key = payload?.key || null;
   }
