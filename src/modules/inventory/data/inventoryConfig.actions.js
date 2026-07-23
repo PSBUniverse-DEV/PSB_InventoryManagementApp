@@ -51,36 +51,33 @@ function mapPayload(entityKey, payload) {
 export async function loadUnitOfMeasures(entityKey) {
 const supabase = getSupabaseAdmin();
   const{data, error} = await supabase
-    .from("inv_s_unit") 
+    .from("inv_s_unit")
     .select("*")
     .order("display_order", { ascending: true })
     .order("name", { ascending: true });
 
   if (error) throw new Error(`Failed to load ${entityKey}: ${error.message}`);
-  return data ?? [];  
+  return data ?? [];
 
 }
 
+export async function loadInventoryConfigData() {
+  const supabase = getSupabaseAdmin();
+  const results = {};
 
+  for (const key of Object.keys(TABLE_MAP)) {
+    const { data, error } = await supabase
+      .from(TABLE_MAP[key])
+      .select("*")
+      .order("display_order", { ascending: true })
+      .order("name", { ascending: true });
 
+    if (error) throw new Error(`Failed to load ${key}: ${error.message}`);
+    results[key] = data ?? [];
+  }
 
-// export async function loadInventoryConfigData() {
-//   const supabase = getSupabaseAdmin();
-//   const results = {};
-
-//   for (const key of Object.keys(TABLE_MAP)) {
-//     const { data, error } = await supabase
-//       .from(TABLE_MAP[key])
-//       .select("*")
-//       .order("display_order", { ascending: true })
-//       .order("name", { ascending: true });
-
-//     if (error) throw new Error(`Failed to load ${key}: ${error.message}`);
-//     results[key] = data ?? [];
-//   }
-
-//   return results;
-// }
+  return results;
+}
 
 // ─── CREATE ─────────────────────────────────────────────────
 

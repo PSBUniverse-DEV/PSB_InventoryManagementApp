@@ -12,8 +12,7 @@ import {
   deactivateEntityAction,
   hardDeleteEntityAction,
   saveEntityOrderAction,
-  loadUnitOfMeasures,
-  // loadInventoryConfigData,
+  loadInventoryConfigData,
 } from "../data/inventoryConfig.actions.js";
 
 // ─── SUB-COMPONENTS ─────────────────────────────────────────
@@ -240,7 +239,7 @@ export default function InventoryConfigView({ configData }) {
   const currentRows = (rows[activeEntityKey] || []);
   const entityConfig = getEntityConfig(activeEntityKey);
   const entityLabel = entityConfig?.label || "Item";
-
+  
   async function refresh() {
     setIsBusy(true);
     try {
