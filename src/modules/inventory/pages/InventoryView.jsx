@@ -10,9 +10,9 @@
 import "./InventoryView.css";
 import React, { useEffect, useMemo, useState } from "react";
 import {
-  LayoutDashboard, Boxes, HardHat, Warehouse, ClipboardList, Plus, Search,
-  ArrowRightLeft, AlertTriangle, X, MapPin, User, RotateCcw,
-  PackageCheck, PackagePlus,
+  Plus, Search,
+  ArrowRightLeft, AlertTriangle, MapPin, User, RotateCcw,
+  PackageCheck, Warehouse,
 } from "lucide-react";
 import {
   Button, Card, Input, Modal, Badge,
@@ -23,7 +23,6 @@ import {
   createEmptyInventoryData,
   mergeInventoryData,
   formatDateTime,
-  getCategoryName,
   getUnitName,
   getEquipmentStatusColor,
 } from "../data/inventory.data";
@@ -553,7 +552,7 @@ function MaterialsTable({ materials, warehouseName, config, onRestock, onTransfe
 
   const actions = [
     { key: "restock", label: "Restock", type: "secondary", icon: "plus", onClick: (r) => onRestock(r) },
-    { key: "transfer", label: "Transfer", type: "secondary", icon: "arrow-right-arrow-left", onClick: (r) => onTransfer(r) },
+    { key: "transfer", label: "Transfer", type: "secondary", icon: "right-to-bracket", onClick: (r) => onTransfer(r) },
   ];
 
   return (
