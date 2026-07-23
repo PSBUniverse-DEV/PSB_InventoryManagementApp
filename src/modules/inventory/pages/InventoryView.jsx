@@ -362,29 +362,10 @@ export default function InventoryView({ initialData }) {
                 <Plus size={14} /> Add location
               </Button>
             </div>
-            <div className="inventory-card-grid">
-              {(data?.warehouses || []).map((w) => {
-                const itemsAtWh = (data?.items || []).filter((i) => String(i.warehouse_id) === String(w.id));
-                const matCount = itemsAtWh.filter((i) => i.category === "Material").length;
-                const eqCount = itemsAtWh.filter((i) => i.category === "Equipment").length;
-                const low = itemsAtWh.filter((i) => i.category === "Material" && (i.quantity || 0) <= (i.min_threshold || 0)).length;
-                return (
-                  <Card key={w.id} className="inventory-wh-card">
-                    <div className="inventory-wh-card-header">
-                      <Warehouse size={16} color="var(--psb-gold)" />
-                      <span className="inventory-wh-card-name">{w.name}</span>
-                    </div>
-                    <div className="inventory-wh-card-address">{w.address}, {w.city}</div>
-                    <div className="inventory-wh-card-manager">Manager: {w.manager || "Unassigned"}</div>
-                    <div className="inventory-wh-card-stats">
-                      <span><b className="inventory-mono">{matCount}</b> materials</span>
-                      <span><b className="inventory-mono">{eqCount}</b> equipment</span>
-                      {low > 0 && <span className="inventory-wh-card-low"><b className="inventory-mono">{low}</b> low stock</span>}
-                    </div>
-                  </Card>
-                );
-              })}
-            </div>
+            <WarehouseTable
+              warehouses={data?.warehouses || []}
+              items={data?.items || []}
+            />
           </div>
         )}
 
@@ -580,6 +561,40 @@ function LogTable({ transactions }) {
       hideSearch
       hideFooter
       emptyMessage="No activity recorded yet."
+    />
+  );
+}
+
+function WarehouseTable({ warehouses, items }) {
+  const warehouseRows = useMemo(() => {
+    return (warehouses || []).map((w) => {
+      const itemsAtWh = (items || []).filter((i) => String(i.warehouse_id) === String(w.id));
+      const matCount = itemsAtWh.filter((i) => i.category === "Material").length;
+      const eqCount = itemsAtWh.filter((i) => i.category === "Equipment").length;
+      const low = itemsAtWh.filter((i) => i.category === "Material" && (i.quantity || 0) <= (i.min_threshold || 0)).length;
+      return { ...w, matCount, eqCount, low };
+    });
+  }, [warehouses, items]);
+
+  const columns = [
+    { key: "name", label: "Name", sortable: true, render: (row) => <span className="fw-semibold">{row.name}</span> },
+    { key: "address", label: "Address", sortable: true, render: (row) => <span className="text-muted">{row.address || "—"}{row.city ? `, ${row.city}` : ""}</span> },
+    { key: "manager", label: "Manager", sortable: true, render: (row) => <span>{row.manager || "Unassigned"}</span> },
+    { key: "matCount", label: "Materials", align: "center", render: (row) => <span className="inventory-mono">{row.matCount}</span> },
+    { key: "eqCount", label: "Equipment", align: "center", render: (row) => <span className="inventory-mono">{row.eqCount}</span> },
+    {
+      key: "low", label: "Low Stock", sortable: true, align: "center",
+      render: (row) => row.low > 0 ? <Badge bg="warning" text="dark">{row.low}</Badge> : <span className="text-muted">0</span>,
+    },
+  ];
+
+  return (
+    <TableZ
+      data={warehouseRows}
+      columns={columns}
+      rowIdKey="id"
+      hideFooter
+      emptyMessage="No warehouses found."
     />
   );
 }
