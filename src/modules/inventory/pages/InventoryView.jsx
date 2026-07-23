@@ -1,35 +1,34 @@
 /**
  * Client Component — InventoryView.jsx
  *
- * Adapted from the Strata Tracker inventory management layout.
- * Uses PSBUniverse design tokens from src/styles/variables.css.
- *
- * SSO AUTHENTICATION:
- *   - Use useAuth() from "@/core/auth/useAuth" to get current user session
- *   - Session is automatically validated via the psb_session cookie
- *   - If not authenticated, the AuthProvider handles redirect to login
- *   - For API calls, the cookie is sent automatically with credentials: "include"
- *
- * TODO (future): Migrate data operations to Server Actions in
- *   src/modules/inventory/data/inventory.actions.js using Supabase.
+ * Displays inventory data bound from the server, with local client state
+ * for mutations. Falls back to seeded demo data when operational tables are
+ * empty. Uses shared UI components and a mobile-first responsive layout.
  */
 "use client";
 
 import "./InventoryView.css";
-import React, { useState, useEffect, useMemo, useCallback } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   LayoutDashboard, Boxes, HardHat, Warehouse, ClipboardList, Plus, Search,
-  ArrowRightLeft, AlertTriangle, X, MapPin, User, Menu, RotateCcw,
-  PackageCheck, PackagePlus, Wrench, ChevronRight
+  ArrowRightLeft, AlertTriangle, X, MapPin, User, RotateCcw,
+  PackageCheck, PackagePlus,
 } from "lucide-react";
-
-// import { useAuth } from "@/core/auth/useAuth";
+import {
+  Button, Card, Input, Modal, Badge,
+} from "@/shared/components/ui";
+import TableZ from "@/shared/components/ui/table/TableZ";
+import {
+  INVENTORY_VIEWS,
+  createEmptyInventoryData,
+  mergeInventoryData,
+  formatDateTime,
+  getCategoryName,
+  getUnitName,
+  getEquipmentStatusColor,
+} from "../data/inventory.data";
 
 const STORAGE_KEY = "psb-inventory-data-v1";
-
-const FONT_IMPORT = `
-@import url('https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@500;600&display=swap');
-`;
 
 const genId = () => Math.random().toString(36).slice(2, 10);
 const nowISO = () => new Date().toISOString();
@@ -41,7 +40,7 @@ function seedData() {
     { id: w2, name: "Fort Worth Distribution Center", address: "1120 Mercantile Row", city: "Fort Worth, TX", manager: "T. Nguyen" },
     { id: w3, name: "Arlington Storage Facility", address: "890 Commerce Loop", city: "Arlington, TX", manager: "K. Douglas" },
   ];
-  
+
   const materials = [
     { name: "Lumber - 2x4x8 Stud", sku: "MAT-LUM-204", unit: "pcs", qty: 1400, min: 500, wh: w1, cost: 4.25 },
     { name: "Rebar - #4 Grade 60", sku: "MAT-REB-004", unit: "ft", qty: 3200, min: 1000, wh: w1, cost: 0.85 },
@@ -79,128 +78,25 @@ function seedData() {
   return { warehouses, items, transactions };
 }
 
-const catColor = (cat) => cat === "Equipment" ? "var(--psb-status-pending)" : "var(--psb-status-active)";
-
 function StatCard({ label, value, accent }) {
   return (
-    <div style={{
-      background: "var(--psb-ink)", borderRadius: 6, padding: "16px 18px",
-      display: "flex", flexDirection: "column", gap: 6, flex: "1 1 160px", minWidth: 150,
-    }}>
-      <span style={{
-        fontFamily: "'Oswald',sans-serif", fontSize: 11, letterSpacing: "0.08em",
-        color: "#9AA5B1", textTransform: "uppercase", fontWeight: 500,
-      }}>{label}</span>
-      <span style={{
-        fontFamily: "'IBM Plex Mono',monospace", fontSize: 28, fontWeight: 600,
-        color: accent || "var(--psb-gold)",
-      }}>{value}</span>
-    </div>
+    <Card className="inventory-stat-card">
+      <div className="inventory-stat-label">{label}</div>
+      <div className="inventory-stat-value" style={{ color: accent || "var(--psb-gold)" }}>{value}</div>
+    </Card>
   );
 }
-
-function TagCard({ item, warehouseName, onCheckout, onCheckin, onTransfer }) {
-  const color = catColor(item.category);
-  const statusColor = item.status === "Available"
-    ? "var(--psb-status-active)"
-    : item.status === "In Use"
-      ? "var(--psb-status-pending)"
-      : "var(--psb-muted)";
-  return (
-    <div style={{
-      position: "relative", background: "var(--psb-surface)", border: "2px dashed var(--psb-border)",
-      borderRadius: 6, padding: "18px 16px 16px", display: "flex", flexDirection: "column", gap: 8,
-    }}>
-      <div style={{
-        position: "absolute", top: -9, left: 18, width: 16, height: 16, borderRadius: "50%",
-        background: "var(--psb-bg)", border: "2px dashed var(--psb-border)",
-      }} />
-      <div style={{
-        position: "absolute", top: 10, right: 12, fontFamily: "'Oswald',sans-serif",
-        fontSize: 10, letterSpacing: "0.1em", fontWeight: 600, color,
-        border: `1.5px solid ${color}`, padding: "2px 6px", borderRadius: 3,
-        transform: "rotate(-6deg)", textTransform: "uppercase",
-      }}>{item.category === "Equipment" ? "EQP" : "MAT"}</div>
-      <div style={{ marginTop: 6 }}>
-        <div style={{ fontFamily: "'Inter',sans-serif", fontWeight: 600, fontSize: 15, color: "var(--psb-text)" }}>{item.name}</div>
-        <div style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 12, color: "var(--psb-muted)", marginTop: 2 }}>{item.sku}</div>
-      </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, color: "var(--psb-muted)" }}>
-        <MapPin size={13} /> {warehouseName}
-      </div>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 4 }}>
-        <span style={{
-          fontSize: 11.5, fontWeight: 600, color: statusColor, textTransform: "uppercase",
-          letterSpacing: "0.04em",
-        }}>{item.status}</span>
-        {item.assignedTo && (
-          <span style={{ fontSize: 12, color: "var(--psb-muted)", display: "flex", alignItems: "center", gap: 4 }}>
-            <User size={12} /> {item.assignedTo}
-          </span>
-        )}
-      </div>
-      <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
-        {item.status === "Available" && (
-          <button onClick={() => onCheckout(item)} style={btnStyle("var(--psb-ink)", "#fff")}>Check out</button>
-        )}
-        {item.status === "In Use" && (
-          <button onClick={() => onCheckin(item)} style={btnStyle("var(--psb-status-active)", "#fff")}>Check in</button>
-        )}
-        <button onClick={() => onTransfer(item)} style={btnStyle("transparent", "var(--psb-text)", "var(--psb-border)")}>
-          <ArrowRightLeft size={13} />
-        </button>
-      </div>
-    </div>
-  );
-}
-
-const btnStyle = (bg, color, border) => ({
-  background: bg, color, border: border ? `1.5px solid ${border}` : "none",
-  borderRadius: 4, padding: "6px 10px", fontSize: 12.5, fontWeight: 600,
-  fontFamily: "'Inter',sans-serif", cursor: "pointer", flex: 1,
-  display: "flex", alignItems: "center", justifyContent: "center", gap: 4,
-});
-
-function Modal({ title, onClose, children }) {
-  return (
-    <div style={{
-      position: "fixed", inset: 0, background: "rgba(16,39,54,0.55)", display: "flex",
-      alignItems: "center", justifyContent: "center", zIndex: 50, padding: 16,
-    }} onClick={onClose}>
-      <div style={{
-        background: "var(--psb-surface)", borderRadius: 8, width: "100%", maxWidth: 460,
-        maxHeight: "90vh", overflowY: "auto", padding: 24,
-      }} onClick={e => e.stopPropagation()}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
-          <h3 style={{
-            fontFamily: "'Oswald',sans-serif", fontSize: 18, fontWeight: 600, color: "var(--psb-text)",
-            textTransform: "uppercase", letterSpacing: "0.02em", margin: 0,
-          }}>{title}</h3>
-          <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--psb-muted)" }}>
-            <X size={20} />
-          </button>
-        </div>
-        {children}
-      </div>
-    </div>
-  );
-}
-
-const inputStyle = {
-  width: "100%", padding: "9px 11px", borderRadius: 5, border: "1.5px solid var(--psb-border)",
-  fontFamily: "'Inter',sans-serif", fontSize: 14, marginBottom: 14, boxSizing: "border-box",
-  background: "var(--psb-surface)",
-};
-const labelStyle = {
-  fontSize: 12, fontWeight: 600, color: "var(--psb-muted)", marginBottom: 5, display: "block",
-  textTransform: "uppercase", letterSpacing: "0.03em",
-};
 
 function Field({ label, children }) {
-  return <div><label style={labelStyle}>{label}</label>{children}</div>;
+  return (
+    <div className="mb-3">
+      <label className="form-label inventory-form-label">{label}</label>
+      {children}
+    </div>
+  );
 }
 
-export default function InventoryView() {
+export default function InventoryView({ initialData = createEmptyInventoryData() }) {
   const [data, setData] = useState(null);
   const [loaded, setLoaded] = useState(false);
   const [view, setView] = useState("dashboard");
@@ -208,32 +104,27 @@ export default function InventoryView() {
   const [filterWh, setFilterWh] = useState("all");
   const [modal, setModal] = useState(null);
   const [toast, setToast] = useState(null);
-  const [mobileNav, setMobileNav] = useState(false);
   const [form, setForm] = useState({});
 
   useEffect(() => {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) {
-        setData(JSON.parse(raw));
-      } else {
-        const seeded = seedData();
-        setData(seeded);
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(seeded));
+      const localData = raw ? JSON.parse(raw) : seedData();
+      if (!raw) {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(localData));
       }
+      setData(mergeInventoryData(initialData, { ...localData, config: initialData?.config }));
     } catch (e) {
-      const seeded = seedData();
-      setData(seeded);
-      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(seeded)); } catch (_) {}
+      setData(mergeInventoryData(initialData, seedData()));
     } finally {
       setLoaded(true);
     }
-  }, []);
+  }, [initialData]);
 
-  const persist = useCallback((next) => {
+  const persist = (next) => {
     setData(next);
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(next)); } catch (e) { /* noop */ }
-  }, []);
+  };
 
   const showToast = (msg) => {
     setToast(msg);
@@ -347,56 +238,65 @@ export default function InventoryView() {
   };
 
   if (!loaded) {
-    return <div style={{ padding: 40, fontFamily: "'Inter',sans-serif", color: "var(--psb-muted)" }}>Loading inventory...</div>;
+    return <div className="inventory-loading">Loading inventory...</div>;
   }
-
-  const navItems = [
-    { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
-    { id: "materials", label: "Materials", icon: Boxes },
-    { id: "equipment", label: "Equipment", icon: HardHat },
-    { id: "warehouses", label: "Locations", icon: Warehouse },
-    { id: "log", label: "Activity log", icon: ClipboardList },
-  ];
 
   return (
     <div className="inventory-module-layout">
-      <style>{FONT_IMPORT}</style>
-
-      {/* Sidebar */}
-      <div className="inventory-sidebar">
+      {/* Sidebar — hidden on small screens */}
+      <aside className="inventory-sidebar">
         <div className="inventory-sidebar-brand">
           <div className="inventory-sidebar-title">STRATA</div>
           <div className="inventory-sidebar-subtitle">Equipment & Material Tracker</div>
           <div className="inventory-sidebar-region">Dallas–Fort Worth, TX</div>
         </div>
         <nav className="inventory-sidebar-nav">
-          {navItems.map(n => (
+          {INVENTORY_VIEWS.map(n => (
             <button
               key={n.id}
               onClick={() => setView(n.id)}
               className={`inventory-sidebar-nav-item${view === n.id ? " is-active" : ""}`}
             >
-              <n.icon size={16} /> {n.label}
+              {n.label}
             </button>
           ))}
         </nav>
         <div className="inventory-sidebar-footer">
           Data shared across all Strata team members using this app.
         </div>
-      </div>
+      </aside>
 
       {/* Main content */}
-      <div className="inventory-main">
+      <main className="inventory-main">
         {toast && (
           <div className="inventory-toast">
             <PackageCheck size={15} color="var(--psb-gold)" /> {toast}
           </div>
         )}
 
+        {/* Mobile nav */}
+        <div className="inventory-mobile-nav">
+          <select
+            className="form-select"
+            value={view}
+            onChange={(e) => setView(e.target.value)}
+            aria-label="Switch view"
+          >
+            {INVENTORY_VIEWS.map(n => <option key={n.id} value={n.id}>{n.label}</option>)}
+          </select>
+        </div>
+
         {view === "dashboard" && (
           <div>
-            <h1 className="inventory-page-title">Dashboard</h1>
-            <p className="inventory-page-desc">Live overview across all warehouse locations.</p>
+            <div className="inventory-view-header">
+              <div>
+                <h1 className="inventory-page-title">Dashboard</h1>
+                <p className="inventory-page-desc">Live overview across all warehouse locations.</p>
+              </div>
+              <Button variant="ghost" size="sm" onClick={() => { localStorage.removeItem(STORAGE_KEY); window.location.reload(); }}>
+                <RotateCcw size={14} /> Reset demo data
+              </Button>
+            </div>
             <div className="inventory-stat-row">
               <StatCard label="Total SKUs" value={data.items.length} />
               <StatCard label="Low stock alerts" value={lowStock.length} accent={lowStock.length ? "var(--psb-status-suspended)" : "var(--psb-gold)"} />
@@ -404,33 +304,31 @@ export default function InventoryView() {
               <StatCard label="Active locations" value={data.warehouses.length} />
             </div>
             <div className="inventory-dashboard-panels">
-              <div className="inventory-panel">
-                <h3 className="inventory-panel-heading inventory-panel-heading--alert">
-                  <AlertTriangle size={15} /> Low stock alerts
-                </h3>
+              <Card className="inventory-panel" title={<><AlertTriangle size={15} /> Low stock alerts</>}>
                 {lowStock.length === 0 && <p className="inventory-panel-empty">All materials are above their reorder threshold.</p>}
                 {lowStock.map(item => (
                   <div key={item.id} className="inventory-panel-row">
                     <div>
-                      <div style={{ fontWeight: 600 }}>{item.name}</div>
+                      <div className="fw-semibold">{item.name}</div>
                       <div className="inventory-panel-row-meta">{whName(item.warehouseId)}</div>
                     </div>
                     <div className="inventory-panel-row-value">{item.quantity}/{item.minThreshold} {item.unit}</div>
                   </div>
                 ))}
-              </div>
-              <div className="inventory-panel">
-                <h3 className="inventory-panel-heading">Recent activity</h3>
+              </Card>
+              <Card className="inventory-panel" title="Recent activity">
                 {data.transactions.slice(0, 6).map(tx => (
                   <div key={tx.id} className="inventory-panel-row">
-                    <div style={{ display: "flex", justifyContent: "space-between" }}>
-                      <span style={{ fontWeight: 600 }}>{tx.type}</span>
-                      <span className="inventory-panel-row-date">{new Date(tx.date).toLocaleString()}</span>
+                    <div>
+                      <div className="d-flex justify-content-between gap-2">
+                        <span className="fw-semibold">{tx.type}</span>
+                        <span className="inventory-panel-row-date">{formatDateTime(tx.date)}</span>
+                      </div>
+                      <div className="inventory-panel-row-meta">{tx.itemName} — {tx.detail}</div>
                     </div>
-                    <div className="inventory-panel-row-meta">{tx.itemName} — {tx.detail}</div>
                   </div>
                 ))}
-              </div>
+              </Card>
             </div>
           </div>
         )}
@@ -441,27 +339,28 @@ export default function InventoryView() {
               <h1 className="inventory-page-title" style={{ margin: 0 }}>
                 {view === "materials" ? "Materials" : "Equipment"}
               </h1>
-              <button
+              <Button
+                variant="success"
+                size="sm"
                 onClick={() => openModal(view === "materials" ? "addMaterial" : "addEquipment")}
-                className="inventory-btn inventory-btn--primary"
               >
                 <Plus size={14} /> Add {view === "materials" ? "material" : "equipment"}
-              </button>
+              </Button>
             </div>
             <div className="inventory-filter-row">
               <div className="inventory-search-wrap">
                 <Search size={15} className="inventory-search-icon" />
-                <input
+                <Input
                   placeholder="Search by name or SKU"
                   value={search}
-                  onChange={e => setSearch(e.target.value)}
+                  onChange={(e) => setSearch(e.target.value)}
                   className="inventory-search-input"
                 />
               </div>
               <select
                 value={filterWh}
-                onChange={e => setFilterWh(e.target.value)}
-                className="inventory-filter-select"
+                onChange={(e) => setFilterWh(e.target.value)}
+                className="form-select inventory-filter-select"
               >
                 <option value="all">All locations</option>
                 {data.warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
@@ -469,57 +368,28 @@ export default function InventoryView() {
             </div>
 
             {view === "materials" && (
-              <div className="inventory-table-wrap">
-                <table className="inventory-table">
-                  <thead>
-                    <tr>
-                      {["Name", "SKU", "Location", "Quantity", "Status", ""].map(h => (
-                        <th key={h}>{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {materials.map(item => {
-                      const low = item.quantity <= item.minThreshold;
-                      return (
-                        <tr key={item.id}>
-                          <td className="inventory-td-name">{item.name}</td>
-                          <td className="inventory-td-sku">{item.sku}</td>
-                          <td>{whName(item.warehouseId)}</td>
-                          <td className="inventory-td-mono">{item.quantity} {item.unit}</td>
-                          <td>
-                            <span className={`inventory-stock-badge${low ? " is-low" : " is-ok"}`}>
-                              {low ? "Low stock" : "OK"}
-                            </span>
-                          </td>
-                          <td className="inventory-td-actions">
-                            <button onClick={() => openModal("restock", item)} className="inventory-btn inventory-btn--ghost">
-                              <PackagePlus size={13} />
-                            </button>
-                            <button onClick={() => openModal("transfer", item)} className="inventory-btn inventory-btn--ghost">
-                              <ArrowRightLeft size={13} />
-                            </button>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                    {materials.length === 0 && (
-                      <tr><td colSpan={6} className="inventory-empty">No materials match this view.</td></tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
+              <MaterialsTable
+                materials={materials}
+                warehouseName={whName}
+                config={data.config}
+                onRestock={(item) => openModal("restock", item)}
+                onTransfer={(item) => openModal("transfer", item)}
+              />
             )}
 
             {view === "equipment" && (
               <div className="inventory-card-grid">
                 {equipmentList.map(item => (
-                  <TagCard key={item.id} item={item} warehouseName={whName(item.warehouseId)}
+                  <EquipmentCard
+                    key={item.id}
+                    item={item}
+                    warehouseName={whName(item.warehouseId)}
                     onCheckout={(it) => openModal("checkout", it)}
                     onCheckin={handleCheckin}
-                    onTransfer={(it) => openModal("transfer", it)} />
+                    onTransfer={(it) => openModal("transfer", it)}
+                  />
                 ))}
-                {equipmentList.length === 0 && <p style={{ color: "var(--psb-muted)" }}>No equipment matches this view.</p>}
+                {equipmentList.length === 0 && <p className="text-muted">No equipment matches this view.</p>}
               </div>
             )}
           </div>
@@ -529,18 +399,18 @@ export default function InventoryView() {
           <div>
             <div className="inventory-view-header">
               <h1 className="inventory-page-title" style={{ margin: 0 }}>Locations</h1>
-              <button onClick={() => openModal("addWarehouse")} className="inventory-btn inventory-btn--primary">
+              <Button variant="success" size="sm" onClick={() => openModal("addWarehouse")}>
                 <Plus size={14} /> Add location
-              </button>
+              </Button>
             </div>
             <div className="inventory-card-grid">
               {data.warehouses.map(w => {
-                const items = data.items.filter(i => i.warehouseId === w.id);
-                const matCount = items.filter(i => i.category === "Material").length;
-                const eqCount = items.filter(i => i.category === "Equipment").length;
-                const low = items.filter(i => i.category === "Material" && i.quantity <= i.minThreshold).length;
+                const itemsAtWh = data.items.filter(i => i.warehouseId === w.id);
+                const matCount = itemsAtWh.filter(i => i.category === "Material").length;
+                const eqCount = itemsAtWh.filter(i => i.category === "Equipment").length;
+                const low = itemsAtWh.filter(i => i.category === "Material" && i.quantity <= i.minThreshold).length;
                 return (
-                  <div key={w.id} className="inventory-wh-card">
+                  <Card key={w.id} className="inventory-wh-card">
                     <div className="inventory-wh-card-header">
                       <Warehouse size={16} color="var(--psb-gold)" />
                       <span className="inventory-wh-card-name">{w.name}</span>
@@ -552,7 +422,7 @@ export default function InventoryView() {
                       <span><b className="inventory-mono">{eqCount}</b> equipment</span>
                       {low > 0 && <span className="inventory-wh-card-low"><b className="inventory-mono">{low}</b> low stock</span>}
                     </div>
-                  </div>
+                  </Card>
                 );
               })}
             </div>
@@ -562,100 +432,197 @@ export default function InventoryView() {
         {view === "log" && (
           <div>
             <h1 className="inventory-page-title">Activity log</h1>
-            <div className="inventory-table-wrap">
-              <table className="inventory-table">
-                <thead>
-                  <tr>
-                    {["Date", "Type", "Item", "Detail", "Location"].map(h => (
-                      <th key={h}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.transactions.map(tx => (
-                    <tr key={tx.id}>
-                      <td className="inventory-td-date">{new Date(tx.date).toLocaleString()}</td>
-                      <td style={{ fontWeight: 600 }}>{tx.type}</td>
-                      <td>{tx.itemName}</td>
-                      <td className="inventory-td-muted">{tx.detail}</td>
-                      <td>{tx.warehouseName}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <LogTable transactions={data.transactions} />
           </div>
         )}
-      </div>
+      </main>
 
       {/* Modals */}
-      {modal === "addWarehouse" && (
-        <Modal title="Add location" onClose={closeModal}>
-          <Field label="Location name"><input style={inputStyle} value={form.name || ""} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="e.g. Plano Equipment Yard" /></Field>
-          <Field label="Address"><input style={inputStyle} value={form.address || ""} onChange={e => setForm({ ...form, address: e.target.value })} placeholder="Street address" /></Field>
-          <Field label="City"><input style={inputStyle} value={form.city || ""} onChange={e => setForm({ ...form, city: e.target.value })} placeholder="Plano, TX" /></Field>
-          <Field label="Manager"><input style={inputStyle} value={form.manager || ""} onChange={e => setForm({ ...form, manager: e.target.value })} placeholder="Name" /></Field>
-          <button onClick={handleAddWarehouse} className="inventory-btn inventory-btn--primary" style={{ width: "100%", padding: 10, justifyContent: "center" }}>Add location</button>
-        </Modal>
-      )}
+      <Modal show={modal === "addWarehouse"} onHide={closeModal} title="Add location" footer={
+        <>
+          <Button variant="ghost" size="sm" onClick={closeModal}>Cancel</Button>
+          <Button variant="success" size="sm" onClick={handleAddWarehouse}>Add location</Button>
+        </>
+      }>
+        <Field label="Location name">
+          <Input value={form.name || ""} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="e.g. Plano Equipment Yard" />
+        </Field>
+        <Field label="Address">
+          <Input value={form.address || ""} onChange={(e) => setForm({ ...form, address: e.target.value })} placeholder="Street address" />
+        </Field>
+        <Field label="City">
+          <Input value={form.city || ""} onChange={(e) => setForm({ ...form, city: e.target.value })} placeholder="Plano, TX" />
+        </Field>
+        <Field label="Manager">
+          <Input value={form.manager || ""} onChange={(e) => setForm({ ...form, manager: e.target.value })} placeholder="Name" />
+        </Field>
+      </Modal>
 
-      {(modal === "addMaterial" || modal === "addEquipment") && (
-        <Modal title={modal === "addMaterial" ? "Add material" : "Add equipment"} onClose={closeModal}>
-          <Field label="Name"><input style={inputStyle} value={form.name || ""} onChange={e => setForm({ ...form, name: e.target.value })} /></Field>
-          <Field label="SKU"><input style={inputStyle} value={form.sku || ""} onChange={e => setForm({ ...form, sku: e.target.value })} placeholder="e.g. MAT-LUM-206" /></Field>
-          <Field label="Location">
-            <select style={inputStyle} value={form.warehouseId || ""} onChange={e => setForm({ ...form, warehouseId: e.target.value })}>
-              <option value="">Select location</option>
-              {data.warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
-            </select>
+      <Modal show={modal === "addMaterial" || modal === "addEquipment"} onHide={closeModal}
+        title={modal === "addMaterial" ? "Add material" : "Add equipment"}
+        footer={
+          <>
+            <Button variant="ghost" size="sm" onClick={closeModal}>Cancel</Button>
+            <Button variant="success" size="sm" onClick={() => handleAddItem(modal === "addMaterial" ? "Material" : "Equipment")}>
+              Add {modal === "addMaterial" ? "material" : "equipment"}
+            </Button>
+          </>
+        }
+      >
+        <Field label="Name"><Input value={form.name || ""} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
+        <Field label="SKU"><Input value={form.sku || ""} onChange={(e) => setForm({ ...form, sku: e.target.value })} placeholder="e.g. MAT-LUM-206" /></Field>
+        <Field label="Location">
+          <select className="form-select" value={form.warehouseId || ""} onChange={(e) => setForm({ ...form, warehouseId: e.target.value })}>
+            <option value="">Select location</option>
+            {data.warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
+          </select>
+        </Field>
+        {modal === "addMaterial" && (
+          <>
+            <Field label="Unit"><Input value={form.unit || ""} onChange={(e) => setForm({ ...form, unit: e.target.value })} placeholder="pcs, ft, bags..." /></Field>
+            <Field label="Starting quantity"><Input type="number" value={form.quantity || ""} onChange={(e) => setForm({ ...form, quantity: e.target.value })} /></Field>
+            <Field label="Reorder threshold"><Input type="number" value={form.minThreshold || ""} onChange={(e) => setForm({ ...form, minThreshold: e.target.value })} /></Field>
+            <Field label="Unit cost ($)"><Input type="number" value={form.cost || ""} onChange={(e) => setForm({ ...form, cost: e.target.value })} /></Field>
+          </>
+        )}
+      </Modal>
+
+      <Modal show={modal === "restock"} onHide={closeModal} title={`Restock: ${form.name}`} footer={
+        <>
+          <Button variant="ghost" size="sm" onClick={closeModal}>Cancel</Button>
+          <Button variant="primary" size="sm" onClick={handleRestock}>Confirm restock</Button>
+        </>
+      }>
+        <p className="text-muted small">Current quantity: <b>{form.quantity} {form.unit}</b> at {whName(form.warehouseId)}</p>
+        <Field label={`Quantity to add (${form.unit})`}>
+          <Input type="number" value={form.qty || ""} onChange={(e) => setForm({ ...form, qty: e.target.value })} />
+        </Field>
+      </Modal>
+
+      <Modal show={modal === "transfer"} onHide={closeModal} title={`Transfer: ${form.name}`} footer={
+        <>
+          <Button variant="ghost" size="sm" onClick={closeModal}>Cancel</Button>
+          <Button variant="primary" size="sm" onClick={handleTransfer}>Confirm transfer</Button>
+        </>
+      }>
+        <p className="text-muted small">From <b>{whName(form.warehouseId)}</b></p>
+        <Field label="Destination location">
+          <select className="form-select" value={form.toWarehouseId || ""} onChange={(e) => setForm({ ...form, toWarehouseId: e.target.value })}>
+            <option value="">Select destination</option>
+            {data.warehouses.filter(w => w.id !== form.warehouseId).map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
+          </select>
+        </Field>
+        {form.category === "Material" && (
+          <Field label={`Quantity to transfer (max ${form.quantity} ${form.unit})`}>
+            <Input type="number" value={form.qty || ""} onChange={(e) => setForm({ ...form, qty: e.target.value })} />
           </Field>
-          {modal === "addMaterial" && (
-            <>
-              <Field label="Unit"><input style={inputStyle} value={form.unit || ""} onChange={e => setForm({ ...form, unit: e.target.value })} placeholder="pcs, ft, bags..." /></Field>
-              <Field label="Starting quantity"><input type="number" style={inputStyle} value={form.quantity || ""} onChange={e => setForm({ ...form, quantity: e.target.value })} /></Field>
-              <Field label="Reorder threshold"><input type="number" style={inputStyle} value={form.minThreshold || ""} onChange={e => setForm({ ...form, minThreshold: e.target.value })} /></Field>
-              <Field label="Unit cost ($)"><input type="number" style={inputStyle} value={form.cost || ""} onChange={e => setForm({ ...form, cost: e.target.value })} /></Field>
-            </>
-          )}
-          <button onClick={() => handleAddItem(modal === "addMaterial" ? "Material" : "Equipment")} className="inventory-btn inventory-btn--primary" style={{ width: "100%", padding: 10, justifyContent: "center" }}>
-            Add {modal === "addMaterial" ? "material" : "equipment"}
-          </button>
-        </Modal>
-      )}
+        )}
+      </Modal>
 
-      {modal === "restock" && (
-        <Modal title={`Restock: ${form.name}`} onClose={closeModal}>
-          <p style={{ fontSize: 13.5, color: "var(--psb-muted)", marginBottom: 14 }}>Current quantity: <b>{form.quantity} {form.unit}</b> at {whName(form.warehouseId)}</p>
-          <Field label={`Quantity to add (${form.unit})`}><input type="number" style={inputStyle} value={form.qty || ""} onChange={e => setForm({ ...form, qty: e.target.value })} /></Field>
-          <button onClick={handleRestock} className="inventory-btn inventory-btn--primary" style={{ width: "100%", padding: 10, justifyContent: "center" }}>Confirm restock</button>
-        </Modal>
-      )}
-
-      {modal === "transfer" && (
-        <Modal title={`Transfer: ${form.name}`} onClose={closeModal}>
-          <p style={{ fontSize: 13.5, color: "var(--psb-muted)", marginBottom: 14 }}>From <b>{whName(form.warehouseId)}</b></p>
-          <Field label="Destination location">
-            <select style={inputStyle} value={form.toWarehouseId || ""} onChange={e => setForm({ ...form, toWarehouseId: e.target.value })}>
-              <option value="">Select destination</option>
-              {data.warehouses.filter(w => w.id !== form.warehouseId).map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
-            </select>
-          </Field>
-          {form.category === "Material" && (
-            <Field label={`Quantity to transfer (max ${form.quantity} ${form.unit})`}>
-              <input type="number" style={inputStyle} value={form.qty || ""} onChange={e => setForm({ ...form, qty: e.target.value })} />
-            </Field>
-          )}
-          <button onClick={handleTransfer} className="inventory-btn inventory-btn--primary" style={{ width: "100%", padding: 10, justifyContent: "center" }}>Confirm transfer</button>
-        </Modal>
-      )}
-
-      {modal === "checkout" && (
-        <Modal title={`Check out: ${form.name}`} onClose={closeModal}>
-          <p style={{ fontSize: 13.5, color: "var(--psb-muted)", marginBottom: 14 }}>At {whName(form.warehouseId)}</p>
-          <Field label="Assigned to"><input style={inputStyle} value={form.assignedTo || ""} onChange={e => setForm({ ...form, assignedTo: e.target.value })} placeholder="Crew member or supervisor name" /></Field>
-          <button onClick={handleCheckout} className="inventory-btn inventory-btn--primary" style={{ width: "100%", padding: 10, justifyContent: "center" }}>Confirm check-out</button>
-        </Modal>
-      )}
+      <Modal show={modal === "checkout"} onHide={closeModal} title={`Check out: ${form.name}`} footer={
+        <>
+          <Button variant="ghost" size="sm" onClick={closeModal}>Cancel</Button>
+          <Button variant="primary" size="sm" onClick={handleCheckout}>Confirm check-out</Button>
+        </>
+      }>
+        <p className="text-muted small">At {whName(form.warehouseId)}</p>
+        <Field label="Assigned to">
+          <Input value={form.assignedTo || ""} onChange={(e) => setForm({ ...form, assignedTo: e.target.value })} placeholder="Crew member or supervisor name" />
+        </Field>
+      </Modal>
     </div>
+  );
+}
+
+// ─── SUB-COMPONENTS ─────────────────────────────────────────
+
+function MaterialsTable({ materials, warehouseName, config, onRestock, onTransfer }) {
+  const columns = [
+    { key: "name", label: "Name", sortable: true, render: (row) => <span className="fw-semibold">{row.name}</span> },
+    { key: "sku", label: "SKU", sortable: true, render: (row) => <span className="inventory-mono text-muted">{row.sku}</span> },
+    { key: "location", label: "Location", sortable: true, render: (row) => warehouseName(row.warehouseId) },
+    { key: "quantity", label: "Quantity", sortable: true, render: (row) => <span className="inventory-mono">{row.quantity} {getUnitName(config, row.unit)}</span> },
+    {
+      key: "status", label: "Status", sortable: true, align: "center",
+      render: (row) => {
+        const low = row.quantity <= row.minThreshold;
+        return <Badge bg={low ? "warning" : "success"} text={low ? "dark" : "white"}>{low ? "Low stock" : "OK"}</Badge>;
+      },
+    },
+  ];
+
+  const actions = [
+    { key: "restock", label: "Restock", type: "secondary", icon: "plus", onClick: (r) => onRestock(r) },
+    { key: "transfer", label: "Transfer", type: "secondary", icon: "arrow-right-arrow-left", onClick: (r) => onTransfer(r) },
+  ];
+
+  return (
+    <TableZ
+      data={materials}
+      columns={columns}
+      actions={actions}
+      rowIdKey="id"
+      hideSearch
+      hideFooter
+      emptyMessage="No materials match this view."
+    />
+  );
+}
+
+function EquipmentCard({ item, warehouseName, onCheckout, onCheckin, onTransfer }) {
+  const statusColor = getEquipmentStatusColor(item.status);
+  const categoryName = item.category === "Equipment" ? "EQP" : "MAT";
+
+  return (
+    <Card className="inventory-tag-card">
+      <div className="inventory-tag-card-category">{categoryName}</div>
+      <div className="inventory-tag-card-title">{item.name}</div>
+      <div className="inventory-tag-card-sku">{item.sku}</div>
+      <div className="inventory-tag-card-meta">
+        <MapPin size={13} /> {warehouseName}
+      </div>
+      <div className="inventory-tag-card-status-row">
+        <Badge bg={statusColor === "active" ? "success" : statusColor === "pending" ? "warning" : "secondary"} text={statusColor === "active" ? "white" : "dark"}>
+          {item.status}
+        </Badge>
+        {item.assignedTo && (
+          <span className="inventory-tag-card-assignee">
+            <User size={12} /> {item.assignedTo}
+          </span>
+        )}
+      </div>
+      <div className="inventory-tag-card-actions">
+        {item.status === "Available" && (
+          <Button variant="primary" size="sm" onClick={() => onCheckout(item)}>Check out</Button>
+        )}
+        {item.status === "In Use" && (
+          <Button variant="success" size="sm" onClick={() => onCheckin(item)}>Check in</Button>
+        )}
+        <Button variant="outline-secondary" size="sm" onClick={() => onTransfer(item)}>
+          <ArrowRightLeft size={13} />
+        </Button>
+      </div>
+    </Card>
+  );
+}
+
+function LogTable({ transactions }) {
+  const columns = [
+    { key: "date", label: "Date", sortable: true, render: (row) => <span className="inventory-mono text-muted small">{formatDateTime(row.date)}</span> },
+    { key: "type", label: "Type", sortable: true, render: (row) => <span className="fw-semibold">{row.type}</span> },
+    { key: "itemName", label: "Item", sortable: true },
+    { key: "detail", label: "Detail", sortable: true, render: (row) => <span className="text-muted">{row.detail}</span> },
+    { key: "warehouseName", label: "Location", sortable: true },
+  ];
+
+  return (
+    <TableZ
+      data={transactions}
+      columns={columns}
+      rowIdKey="id"
+      hideSearch
+      hideFooter
+      emptyMessage="No activity recorded yet."
+    />
   );
 }

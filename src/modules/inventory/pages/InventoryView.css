@@ -1,112 +1,113 @@
-    /**
- * Inventory Module Styles
+/**
+ * Inventory Module Styles — Mobile-first
  * Uses PSBUniverse design tokens from src/styles/variables.css.
  */
 
 .inventory-module-layout {
-  font-family: 'Inter', sans-serif;
-  background: var(--psb-bg);
-  min-height: 600px;
   display: flex;
+  min-height: 100vh;
   color: var(--psb-text);
+  background: var(--psb-bg);
   margin: -1.25rem -1.5rem;
   width: calc(100% + 3rem);
 }
 
-/* ─── Sidebar ─── */
+.inventory-loading {
+  padding: 2.5rem;
+  color: var(--psb-muted);
+  font-family: var(--psb-sans);
+}
+
+/* ─── Mobile navigation (default: visible) ─── */
+
+.inventory-mobile-nav {
+  margin-bottom: 1rem;
+}
+
+.inventory-mobile-nav .form-select {
+  border-radius: 0.55rem;
+  border-color: var(--psb-border);
+  color: var(--psb-text);
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+/* ─── Sidebar (default: hidden on mobile) ─── */
 
 .inventory-sidebar {
-  width: 220px;
-  background: var(--psb-ink);
-  flex-shrink: 0;
-  display: flex;
+  display: none;
   flex-direction: column;
-  padding: 22px 16px;
-  margin: 10px 0 10px 10px;
-  border-radius: 10px;
-  min-height: calc(100vh - 76px);
+  width: 220px;
+  flex-shrink: 0;
+  background: var(--psb-ink);
+  color: #fff;
+  padding: 1.25rem 1rem;
+  margin: 0.6rem 0 0.6rem 0.6rem;
+  border-radius: 0.75rem;
 }
 
 .inventory-sidebar-brand {
-  background-image: repeating-linear-gradient(
-      0deg,
-      rgba(255,255,255,0.04) 0px,
-      rgba(255,255,255,0.04) 1px,
-      transparent 1px,
-      transparent 22px
-    ),
-    repeating-linear-gradient(
-      90deg,
-      rgba(255,255,255,0.04) 0px,
-      rgba(255,255,255,0.04) 1px,
-      transparent 1px,
-      transparent 22px
-    );
-  padding: 10px 10px 14px;
-  margin-bottom: 20px;
-  border-bottom: 1px solid #333D48;
+  padding: 0.6rem 0.6rem 0.9rem;
+  margin-bottom: 1.25rem;
+  border-bottom: 1px solid #333d48;
 }
 
 .inventory-sidebar-title {
-  font-family: 'Oswald', sans-serif;
-  font-size: 17px;
+  font-family: var(--psb-serif);
+  font-size: 1.05rem;
   font-weight: 700;
   color: var(--psb-gold);
   letter-spacing: 0.03em;
 }
 
 .inventory-sidebar-subtitle {
-  font-family: 'Oswald', sans-serif;
-  font-size: 11px;
-  color: #9AA5B1;
+  font-family: var(--psb-serif);
+  font-size: 0.7rem;
+  color: #9aa5b1;
   letter-spacing: 0.12em;
   text-transform: uppercase;
 }
 
 .inventory-sidebar-region {
-  font-size: 11px;
-  color: #5F6B78;
-  margin-top: 4px;
+  font-size: 0.7rem;
+  color: #5f6b78;
+  margin-top: 0.25rem;
 }
 
 .inventory-sidebar-nav {
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 0.2rem;
 }
 
 .inventory-sidebar-nav-item {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 9px 10px;
-  border-radius: 5px;
+  gap: 0.6rem;
+  padding: 0.55rem 0.65rem;
+  border-radius: 0.35rem;
   background: transparent;
   border: none;
   cursor: pointer;
-  color: #C4CAD1;
-  font-size: 13.5px;
+  color: #c4cad1;
+  font-size: 0.85rem;
   font-weight: 500;
   text-align: left;
   transition: background 0.15s ease, color 0.15s ease;
 }
 
-.inventory-sidebar-nav-item:hover {
-  background: #2A3541;
-  color: var(--psb-gold);
-}
-
+.inventory-sidebar-nav-item:hover,
 .inventory-sidebar-nav-item.is-active {
-  background: #2A3541;
+  background: #2a3541;
   color: var(--psb-gold);
 }
 
 .inventory-sidebar-footer {
   margin-top: auto;
-  font-size: 11px;
-  color: #5F6B78;
-  padding-top: 16px;
-  border-top: 1px solid #333D48;
+  font-size: 0.7rem;
+  color: #5f6b78;
+  padding-top: 1rem;
+  border-top: 1px solid #333d48;
 }
 
 /* ─── Main content ─── */
@@ -114,356 +115,361 @@
 .inventory-main {
   flex: 1;
   min-width: 0;
-  padding: 26px 32px;
+  padding: 1rem;
   overflow-y: auto;
 }
 
 .inventory-page-title {
-  font-family: 'Oswald', sans-serif;
-  font-size: 24px;
-  font-weight: 600;
-  margin-bottom: 4px;
+  font-family: var(--psb-serif);
+  font-size: 1.25rem;
+  font-weight: 700;
+  margin-bottom: 0.15rem;
   text-transform: uppercase;
   color: var(--psb-text);
 }
 
 .inventory-page-desc {
   color: var(--psb-muted);
-  font-size: 14px;
-  margin-bottom: 20px;
+  font-size: 0.85rem;
+  margin-bottom: 0;
+}
+
+.inventory-view-header {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
 }
 
 /* ─── Toast ─── */
 
 .inventory-toast {
   position: fixed;
-  top: 20px;
-  right: 20px;
+  top: 1rem;
+  right: 1rem;
   background: var(--psb-ink);
   color: #fff;
-  padding: 10px 16px;
-  border-radius: 6px;
-  font-size: 13.5px;
+  padding: 0.6rem 1rem;
+  border-radius: 0.4rem;
+  font-size: 0.85rem;
   z-index: 100;
   display: flex;
   align-items: center;
-  gap: 8px;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+  gap: 0.5rem;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
 }
 
 /* ─── Stat row ─── */
 
 .inventory-stat-row {
-  display: flex;
-  gap: 14px;
-  flex-wrap: wrap;
-  margin-bottom: 26px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.inventory-stat-card {
+  padding: 0.9rem;
+}
+
+.inventory-stat-card .psb-ui-card-body {
+  padding: 0;
+}
+
+.inventory-stat-label {
+  font-family: var(--psb-serif);
+  font-size: 0.65rem;
+  letter-spacing: 0.08em;
+  color: var(--psb-muted);
+  text-transform: uppercase;
+  font-weight: 600;
+  margin-bottom: 0.35rem;
+}
+
+.inventory-stat-value {
+  font-family: var(--psb-font-primary);
+  font-size: 1.6rem;
+  font-weight: 700;
+  line-height: 1.1;
 }
 
 /* ─── Dashboard panels ─── */
 
 .inventory-dashboard-panels {
-  display: flex;
-  gap: 20px;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
 }
 
 .inventory-panel {
-  flex: 1 1 320px;
-  background: var(--psb-surface);
-  border-radius: 6px;
-  border: 1px solid var(--psb-border);
-  padding: 18px;
+  width: 100%;
 }
 
-.inventory-panel-heading {
-  font-family: 'Oswald', sans-serif;
-  font-size: 14px;
+.inventory-panel .psb-ui-card-header {
+  font-family: var(--psb-serif);
+  font-size: 0.8rem;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  margin-bottom: 12px;
+  color: var(--psb-muted);
   display: flex;
   align-items: center;
-  gap: 6px;
-  color: var(--psb-muted);
-}
-
-.inventory-panel-heading--alert {
-  color: var(--psb-status-pending);
+  gap: 0.4rem;
 }
 
 .inventory-panel-empty {
-  font-size: 13.5px;
+  font-size: 0.85rem;
   color: var(--psb-muted);
+  margin-bottom: 0;
 }
 
 .inventory-panel-row {
   display: flex;
   justify-content: space-between;
-  padding: 8px 0;
+  align-items: flex-start;
+  gap: 1rem;
+  padding: 0.5rem 0;
   border-bottom: 1px solid var(--psb-bg);
-  font-size: 13.5px;
+  font-size: 0.85rem;
+}
+
+.inventory-panel-row:last-child {
+  border-bottom: none;
 }
 
 .inventory-panel-row-meta {
   color: var(--psb-muted);
-  font-size: 12px;
+  font-size: 0.75rem;
 }
 
 .inventory-panel-row-value {
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: var(--psb-font-primary);
   color: var(--psb-status-pending);
-  font-weight: 600;
+  font-weight: 700;
+  font-size: 0.85rem;
+  white-space: nowrap;
 }
 
 .inventory-panel-row-date {
   color: var(--psb-muted);
-  font-size: 11.5px;
-}
-
-/* ─── View header ─── */
-
-.inventory-view-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 16px;
-  flex-wrap: wrap;
-  gap: 10px;
+  font-size: 0.7rem;
+  white-space: nowrap;
 }
 
 /* ─── Filter row ─── */
 
 .inventory-filter-row {
   display: flex;
-  gap: 10px;
-  margin-bottom: 18px;
-  flex-wrap: wrap;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin-bottom: 1rem;
 }
 
 .inventory-search-wrap {
   position: relative;
-  flex: 1 1 220px;
+  flex: 1 1 auto;
 }
 
 .inventory-search-icon {
   position: absolute;
-  left: 10px;
-  top: 10px;
+  left: 0.7rem;
+  top: 50%;
+  transform: translateY(-50%);
   color: var(--psb-muted);
   pointer-events: none;
 }
 
 .inventory-search-input {
-  width: 100%;
-  padding: 9px 11px 9px 32px;
-  border-radius: 5px;
-  border: 1.5px solid var(--psb-border);
-  font-family: 'Inter', sans-serif;
-  font-size: 14px;
-  background: var(--psb-surface);
-  box-sizing: border-box;
-}
-
-.inventory-search-input:focus {
-  outline: none;
-  border-color: var(--psb-brand);
-  box-shadow: 0 0 0 2px rgba(29, 89, 127, 0.15);
+  padding-left: 2rem;
 }
 
 .inventory-filter-select {
-  padding: 9px 11px;
-  border-radius: 5px;
-  border: 1.5px solid var(--psb-border);
-  font-family: 'Inter', sans-serif;
-  font-size: 14px;
-  background: var(--psb-surface);
-  width: 210px;
-  box-sizing: border-box;
-}
-
-.inventory-filter-select:focus {
-  outline: none;
-  border-color: var(--psb-brand);
-  box-shadow: 0 0 0 2px rgba(29, 89, 127, 0.15);
-}
-
-/* ─── Table ─── */
-
-.inventory-table-wrap {
-  background: var(--psb-surface);
-  border-radius: 6px;
-  border: 1px solid var(--psb-border);
-  overflow: hidden;
-}
-
-.inventory-table {
   width: 100%;
-  border-collapse: collapse;
-  font-size: 13.5px;
-}
-
-.inventory-table th {
-  padding: 10px 14px;
-  font-family: 'Oswald', sans-serif;
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--psb-muted);
-  background: var(--psb-bg);
-  text-align: left;
-  font-weight: 500;
-}
-
-.inventory-table td {
-  padding: 10px 14px;
-  border-top: 1px solid var(--psb-bg);
-}
-
-.inventory-td-name {
-  font-weight: 600;
-}
-
-.inventory-td-sku {
-  font-family: 'IBM Plex Mono', monospace;
-  color: var(--psb-muted);
-}
-
-.inventory-td-mono {
-  font-family: 'IBM Plex Mono', monospace;
-}
-
-.inventory-td-date {
-  color: var(--psb-muted);
-  font-size: 12px;
-}
-
-.inventory-td-muted {
-  color: var(--psb-muted);
-}
-
-.inventory-td-actions {
-  display: flex;
-  gap: 6px;
-}
-
-.inventory-empty {
-  padding: 20px;
-  text-align: center;
-  color: var(--psb-muted);
-}
-
-.inventory-mono {
-  font-family: 'IBM Plex Mono', monospace;
-}
-
-/* ─── Stock badge ─── */
-
-.inventory-stock-badge {
-  font-size: 11.5px;
-  font-weight: 600;
-  padding: 3px 8px;
-  border-radius: 3px;
-}
-
-.inventory-stock-badge.is-low {
-  background: var(--psb-status-pending-bg);
-  color: var(--psb-status-pending);
-}
-
-.inventory-stock-badge.is-ok {
-  background: var(--psb-status-active-bg);
-  color: var(--psb-status-active);
-}
-
-/* ─── Button ─── */
-
-.inventory-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  border-radius: 4px;
-  padding: 6px 10px;
-  font-size: 12.5px;
-  font-weight: 600;
-  font-family: 'Inter', sans-serif;
-  cursor: pointer;
-  border: 1.5px solid transparent;
-  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
-}
-
-.inventory-btn--primary {
-  background: var(--psb-gold);
-  color: var(--psb-ink);
-  border: none;
-}
-
-.inventory-btn--primary:hover {
-  background: #b8925e;
-}
-
-.inventory-btn--ghost {
-  background: transparent;
-  color: var(--psb-text);
-  border: 1.5px solid var(--psb-border);
-  flex: none;
-  padding: 5px 8px;
-}
-
-.inventory-btn--ghost:hover {
-  border-color: var(--psb-brand);
-  color: var(--psb-brand);
 }
 
 /* ─── Card grid ─── */
 
 .inventory-card-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
-  gap: 14px;
+  grid-template-columns: 1fr;
+  gap: 0.75rem;
+}
+
+/* ─── Tag card (equipment) ─── */
+
+.inventory-tag-card {
+  position: relative;
+  border-style: dashed;
+}
+
+.inventory-tag-card-category {
+  position: absolute;
+  top: 0.6rem;
+  right: 0.6rem;
+  font-family: var(--psb-serif);
+  font-size: 0.65rem;
+  letter-spacing: 0.1em;
+  font-weight: 700;
+  color: var(--psb-status-pending);
+  border: 1.5px solid var(--psb-status-pending);
+  padding: 0.15rem 0.4rem;
+  border-radius: 0.25rem;
+  text-transform: uppercase;
+}
+
+.inventory-tag-card-title {
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: var(--psb-text);
+  padding-right: 2.5rem;
+}
+
+.inventory-tag-card-sku {
+  font-family: var(--psb-font-primary);
+  font-size: 0.75rem;
+  color: var(--psb-muted);
+  margin-bottom: 0.4rem;
+}
+
+.inventory-tag-card-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.8rem;
+  color: var(--psb-muted);
+  margin-bottom: 0.6rem;
+}
+
+.inventory-tag-card-status-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.inventory-tag-card-assignee {
+  font-size: 0.78rem;
+  color: var(--psb-muted);
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.inventory-tag-card-actions {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.inventory-tag-card-actions .btn {
+  flex: 1;
+}
+
+.inventory-tag-card-actions .btn-outline-secondary {
+  flex: 0 0 auto;
 }
 
 /* ─── Warehouse card ─── */
 
-.inventory-wh-card {
-  background: var(--psb-surface);
-  border: 1px solid var(--psb-border);
-  border-radius: 6px;
-  padding: 18px;
+.inventory-wh-card .psb-ui-card-body {
+  padding: 0.9rem;
 }
 
 .inventory-wh-card-header {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin-bottom: 6px;
+  gap: 0.5rem;
+  margin-bottom: 0.35rem;
 }
 
 .inventory-wh-card-name {
-  font-weight: 600;
-  font-size: 15px;
+  font-weight: 700;
+  font-size: 0.95rem;
 }
 
-.inventory-wh-card-address {
-  font-size: 12.5px;
-  color: var(--psb-muted);
-  margin-bottom: 12px;
-}
-
+.inventory-wh-card-address,
 .inventory-wh-card-manager {
-  font-size: 12.5px;
+  font-size: 0.8rem;
   color: var(--psb-muted);
-  margin-bottom: 12px;
+  margin-bottom: 0.4rem;
 }
 
 .inventory-wh-card-stats {
   display: flex;
-  gap: 14px;
-  font-size: 12.5px;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  font-size: 0.8rem;
   border-top: 1px solid var(--psb-bg);
-  padding-top: 10px;
+  padding-top: 0.6rem;
 }
 
 .inventory-wh-card-low {
   color: var(--psb-status-pending);
+}
+
+/* ─── Tables ─── */
+
+.inventory-mono {
+  font-family: var(--psb-font-primary);
+}
+
+/* ─── Form labels in modals ─── */
+
+.inventory-form-label {
+  font-size: 0.75rem;
+  color: var(--psb-muted);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+/* ─── TABLET (>= 640px) ─── */
+
+@media (min-width: 640px) {
+  .inventory-main {
+    padding: 1.25rem 1.5rem;
+  }
+
+  .inventory-view-header {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .inventory-filter-row {
+    flex-direction: row;
+    align-items: center;
+  }
+
+  .inventory-filter-select {
+    width: 210px;
+  }
+
+  .inventory-card-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+/* ─── DESKTOP (>= 992px) ─── */
+
+@media (min-width: 992px) {
+  .inventory-sidebar {
+    display: flex;
+  }
+
+  .inventory-mobile-nav {
+    display: none;
+  }
+
+  .inventory-stat-row {
+    grid-template-columns: repeat(4, 1fr);
+  }
+
+  .inventory-dashboard-panels {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .inventory-card-grid {
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  }
 }
