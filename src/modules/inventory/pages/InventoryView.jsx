@@ -245,8 +245,8 @@ export default function InventoryView({ initialData = createEmptyInventoryData()
       {/* Sidebar — hidden on small screens */}
       <aside className="inventory-sidebar">
         <div className="inventory-sidebar-brand">
-          <div className="inventory-sidebar-title">STRATA</div>
-          <div className="inventory-sidebar-subtitle">Equipment & Material Tracker</div>
+          <div className="inventory-sidebar-title">PSB Inventory Management System</div>
+          <div className="inventory-sidebar-subtitle">Materials Tracker</div>
           <div className="inventory-sidebar-region">Dallas–Fort Worth, TX</div>
         </div>
         <nav className="inventory-sidebar-nav">

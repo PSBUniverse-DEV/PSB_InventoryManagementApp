@@ -59,7 +59,7 @@ function buildPayload(entityKey, row) {
     display_order: row?.display_order || 0,
   };
   if (config?.hasKey || config?.hasAbbreviation) {
-    payload[config.keyField] = String(row?.[config.keyField] || "").trim() || null;
+    payload[config.keyField] = String(row?.[config.keyField] || "").trim();
   }
   return payload;
 }
@@ -248,7 +248,7 @@ export default function InventoryConfigView({ configData }) {
     if (!id || isBusy) return;
     const trimmed = String(value ?? "").trim();
     setRowsForActive((prev) =>
-      prev.map((r) => String(r?.id) === String(id) ? { ...r, [key]: trimmed || null } : r)
+      prev.map((r) => String(r?.id) === String(id) ? { ...r, [key]: trimmed } : r)
     );
     setPendingBatch((prev) => {
       if (isTempId(id)) {
@@ -256,7 +256,7 @@ export default function InventoryConfigView({ configData }) {
           ...prev,
           creates: prev.creates.map((e) =>
             String(e?.tempId ?? "") === String(id)
-              ? { ...e, payload: { ...e.payload, [key]: trimmed || null } }
+              ? { ...e, payload: { ...e.payload, [key]: trimmed } }
               : e
           ),
           updates: removeKey(prev.updates, id),
@@ -266,7 +266,7 @@ export default function InventoryConfigView({ configData }) {
         ...prev,
         updates: {
           ...prev.updates,
-          [String(id)]: mergeUpdatePatch(prev.updates?.[String(id)], { [key]: trimmed || null }),
+          [String(id)]: mergeUpdatePatch(prev.updates?.[String(id)], { [key]: trimmed }),
         },
       };
     });
@@ -556,32 +556,32 @@ export default function InventoryConfigView({ configData }) {
           </select>
         </div>
 
-        <ConfigSideNav
-          activeEntityKey={activeEntityKey}
-          onSelect={(key) => { setActiveEntityKey(key); setEditingId(null); }}
-        />
+        <div className="inventory-config-panel">
+          <ConfigSideNav
+            activeEntityKey={activeEntityKey}
+            onSelect={(key) => { setActiveEntityKey(key); setEditingId(null); }}
+          />
+        </div>
 
         <div className="inventory-config-content">
-          <div className="inventory-config-panel">
-            <div className="inventory-config-table-header">
-              <div>
-                <div className="inventory-config-editor-title">{entityConfig?.label || "Items"}</div>
-                <div className="inventory-config-editor-description">{entityConfig?.description || ""}</div>
-              </div>
+          <div className="inventory-config-table-header">
+            <div>
+              <div className="inventory-config-editor-title">{entityConfig?.label || "Items"}</div>
+              <div className="inventory-config-editor-description">{entityConfig?.description || ""}</div>
             </div>
-
-            <TableZ
-              data={decoratedRows}
-              columns={columns}
-              rowIdKey="id"
-              actions={actions}
-              draggable={!isBusy && !hasPendingChanges}
-              onReorder={handleReorder}
-              hideSearch
-              hideFooter
-              emptyMessage={`No ${entityConfig?.label?.toLowerCase() || "items"} found.`}
-            />
           </div>
+
+          <TableZ
+            data={decoratedRows}
+            columns={columns}
+            rowIdKey="id"
+            actions={actions}
+            draggable={!isBusy && !hasPendingChanges}
+            onReorder={handleReorder}
+            hideSearch
+            hideFooter
+            emptyMessage={`No ${entityConfig?.label?.toLowerCase() || "items"} found.`}
+          />
         </div>
       </div>
     </main>
