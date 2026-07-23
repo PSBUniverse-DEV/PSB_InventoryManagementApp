@@ -222,6 +222,26 @@ export default function InventoryConfigView({ configData }) {
     setDialog({ kind: "delete", target: row });
   }, [isBusy]);
 
+  const handleBatchChange = useCallback((payload) => {
+    const { type } = payload || {};
+    if (!type) return;
+
+    if (type === "create") {
+      setRowsForActive((prev) => [payload.row, ...prev]);
+    } else if (type === "delete") {
+      setRowsForActive((prev) => prev.filter((r) => String(r?.id) !== String(payload.rowId)));
+    } else if (type === "update") {
+      setRows((prev) => ({
+        ...prev,
+        [activeEntityKey]: prev[activeEntityKey].map((r) =>
+          String(r?.id) === String(payload.rowId) ? { ...r, ...payload.updates } : r,
+        ),
+      }));
+    } else if (type === "cancel" || type === "reorder") {
+      setRows((prev) => ({ ...prev, [activeEntityKey]: payload.rows }));
+    }
+  }, [activeEntityKey, setRowsForActive]);
+
   const handleBatchSave = useCallback(async (payload) => {
     setIsBusy(true);
     try {
@@ -437,6 +457,7 @@ export default function InventoryConfigView({ configData }) {
               actions={actions}
               batchMode
               batchFields={batchFields}
+              onBatchChange={handleBatchChange}
               onBatchSave={handleBatchSave}
               draggable={!isBusy}
               onReorder={handleReorder}
