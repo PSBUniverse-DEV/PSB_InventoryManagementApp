@@ -141,7 +141,7 @@ function ConfigSideNav({ activeEntityKey, onSelect }) {
   );
 }
 
-// ─── MAIN VIEW ──────────────────────────────────────────────
+//#region ─── MAIN VIEW ──────────────────────────────────────────────
 
 export default function InventoryConfigView({ configData }) {
   const [activeEntityKey, setActiveEntityKey] = useState("categories");
@@ -166,6 +166,8 @@ export default function InventoryConfigView({ configData }) {
   const currentSeedRows = useMemo(() => seedRows[activeEntityKey] || [], [seedRows, activeEntityKey]);
   const entityConfig = getEntityConfig(activeEntityKey);
   const entityLabel = entityConfig?.label || "Item";
+
+  //#endregion
 
   // ─── Pending summary ────────────────────────────────────
   const pendingSummary = useMemo(() => {
@@ -212,7 +214,7 @@ export default function InventoryConfigView({ configData }) {
     setRows((prev) => ({ ...prev, [activeEntityKey]: typeof next === "function" ? next(prev[activeEntityKey] || []) : next }));
   }, [activeEntityKey]);
 
-  // ─── Actions ────────────────────────────────────────────
+  //#region ─── Actions ────────────────────────────────────────────
   const refresh = useCallback(async () => {
     setIsBusy(true);
     try {
@@ -346,8 +348,9 @@ export default function InventoryConfigView({ configData }) {
     }));
     toastSuccess("Item deletion staged for Save Batch.", "Batching");
   }, [activeEntityKey, isBusy, setRowsForActive]);
+  //#endregion
 
-  // ─── Batch save / cancel ────────────────────────────────
+  //#region ─── Batch save / cancel ────────────────────────────────
   const handleSaveBatch = useCallback(async () => {
     if (!hasPendingChanges || isBusy) return;
     setIsBusy(true);
@@ -390,8 +393,9 @@ export default function InventoryConfigView({ configData }) {
     setPendingBatch(createEmptyBatchState());
     setEditingId(null);
   }, [activeEntityKey, currentSeedRows, isBusy]);
-
-  // ─── Reorder ────────────────────────────────────────────
+//#endregion
+  
+// ─── Reorder ────────────────────────────────────────────
   const handleReorder = useCallback((nextRows) => {
     if (isBusy) return;
     const reordered = (Array.isArray(nextRows) ? nextRows : []).map((r, i) => ({ ...r, display_order: i + 1 }));
@@ -445,7 +449,7 @@ export default function InventoryConfigView({ configData }) {
         },
       });
     }
-
+//Description column
     cols.push({
       key: "description",
       label: "Description",
@@ -464,7 +468,7 @@ export default function InventoryConfigView({ configData }) {
         );
       },
     });
-
+// IsActive column
     cols.push({
       key: "is_active_bool",
       label: "Active",
@@ -474,7 +478,29 @@ export default function InventoryConfigView({ configData }) {
       render: (row) => (
         <StatusBadge status={row?.is_active_bool ? "active" : "inactive"} />
       ),
+    
     });
+// Order Display column
+    cols.push({
+  key: "display_order",
+  label: "Order",
+  width: "8%",
+  sortable: true,
+  align: "center",
+  render: (row) => {
+    const isEditing = String(row?.id ?? "") === String(editingId ?? "");
+    const editDisabled = !isEditing || isBusy;
+    return (
+      <InlineEditCell
+        value={String(row?.display_order ?? "")}
+        onCommit={(val) => handleInlineEdit(row, "display_order", val)}
+        onCancel={stopEdit}
+        disabled={editDisabled}
+      />
+    );
+  },
+});
+
 
     return cols;
   }, [editingId, entityConfig, isBusy, handleInlineEdit, stopEdit]);

@@ -245,9 +245,9 @@ export default function InventoryView({ initialData = createEmptyInventoryData()
       {/* Sidebar — hidden on small screens */}
       <aside className="inventory-sidebar">
         <div className="inventory-sidebar-brand">
-          <div className="inventory-sidebar-title">PSB Inventory Management System</div>
+          <div className="inventory-sidebar-title">PSB IMS</div>
           <div className="inventory-sidebar-subtitle">Materials Tracker</div>
-          <div className="inventory-sidebar-region">Dallas–Fort Worth, TX</div>
+          {/* <div className="inventory-sidebar-region">Dallas–Fort Worth, TX</div> */}
         </div>
         <nav className="inventory-sidebar-nav">
           {INVENTORY_VIEWS.map(n => (
@@ -436,7 +436,9 @@ export default function InventoryView({ initialData = createEmptyInventoryData()
         )}
       </main>
 
+
       {/* Modals */}
+      
       <Modal show={modal === "addWarehouse"} onHide={closeModal} title="Add location" footer={
         <>
           <Button variant="ghost" size="sm" onClick={closeModal}>Cancel</Button>
@@ -456,6 +458,7 @@ export default function InventoryView({ initialData = createEmptyInventoryData()
           <Input value={form.manager || ""} onChange={(e) => setForm({ ...form, manager: e.target.value })} placeholder="Name" />
         </Field>
       </Modal>
+
 
       <Modal show={modal === "addMaterial" || modal === "addEquipment"} onHide={closeModal}
         title={modal === "addMaterial" ? "Add material" : "Add equipment"}
@@ -531,9 +534,13 @@ export default function InventoryView({ initialData = createEmptyInventoryData()
       </Modal>
     </div>
   );
+  
 }
 
-// ─── SUB-COMPONENTS ─────────────────────────────────────────
+
+
+//#region ─── SUB-COMPONENTS ─────────────────────────────────────────
+
 
 function MaterialsTable({ materials, warehouseName, config, onRestock, onTransfer }) {
   const columns = [
@@ -625,3 +632,5 @@ function LogTable({ transactions }) {
     />
   );
 }
+
+//#endregion
