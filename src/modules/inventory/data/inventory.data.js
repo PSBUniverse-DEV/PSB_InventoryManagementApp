@@ -59,35 +59,6 @@ export function getWarehouseTypeName(configData, typeKey) {
   return buildConfigLookup(configData, "warehouseTypes")[typeKey] || typeKey || "";
 }
 
-// ─── EMPTY DATA SHAPE ───────────────────────────────────────
-
-export function createEmptyInventoryData() {
-  return {
-    warehouses: [],
-    items: [],
-    transactions: [],
-    config: {
-      categories: [],
-      units: [],
-      statuses: [],
-      warehouseTypes: [],
-    },
-  };
-}
-
-// ─── MERGE SERVER + LOCAL DATA ──────────────────────────────
-
-export function mergeInventoryData(serverData, localData) {
-  return {
-    warehouses: serverData?.warehouses?.length ? serverData.warehouses : localData?.warehouses ?? [],
-    items: serverData?.items?.length ? serverData.items : localData?.items ?? [],
-    transactions: serverData?.transactions?.length
-      ? serverData.transactions
-      : localData?.transactions ?? [],
-    config: serverData?.config ?? localData?.config ?? createEmptyInventoryData().config,
-  };
-}
-
 // ─── FORMATTING ─────────────────────────────────────────────
 
 export function formatDateTime(value) {
