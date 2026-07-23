@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Button, InlineEditCell, Input, Modal, StatusBadge, TableZ, toastError, toastSuccess } from "@/shared/components/ui";
 import {
   ENTITY_CONFIGS, ENTITY_KEYS, getEntityConfig,
@@ -12,7 +12,8 @@ import {
   deactivateEntityAction,
   hardDeleteEntityAction,
   saveEntityOrderAction,
-  loadInventoryConfigData,
+  loadUnitOfMeasures,
+  // loadInventoryConfigData,
 } from "../data/inventoryConfig.actions.js";
 
 // ─── SUB-COMPONENTS ─────────────────────────────────────────
@@ -222,19 +223,21 @@ function ConfigDialog({ dialog, draft, entityKey, isBusy, setDraft, closeDialog,
 
 export default function InventoryConfigView({ configData }) {
   const [activeEntityKey, setActiveEntityKey] = useState("categories");
-  const [rows, setRows] = useState(() => {
+  const [rows, setRows] = useState({});
+
+  useEffect(() => {
     const initial = {};
     ENTITY_KEYS.forEach((key) => {
       initial[key] = (configData[key] || []).map((r, i) => mapEntityRow(r, i));
     });
-    return initial;
-  });
+    setRows(initial);
+  }, [configData]);
   const [isBusy, setIsBusy] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [dialog, setDialog] = useState({ kind: null, target: null, nextIsActive: null });
   const [draft, setDraft] = useState({ name: "", key: "", description: "" });
 
-  const currentRows = rows[activeEntityKey] || [];
+  const currentRows = (rows[activeEntityKey] || []);
   const entityConfig = getEntityConfig(activeEntityKey);
   const entityLabel = entityConfig?.label || "Item";
 
@@ -258,7 +261,10 @@ export default function InventoryConfigView({ configData }) {
   async function handleReorder(next) {
     if (isBusy) return;
     const reordered = (Array.isArray(next) ? next : []).map((r, i) => ({ ...r, display_order: i + 1 }));
-    setRows((prev) => ({ ...prev, [activeEntityKey]: reordered }));
+    setRows((prev) => {
+      if (!prev[activeEntityKey]) return prev;
+      return { ...prev, [activeEntityKey]: reordered };
+    });
 
     setIsBusy(true);
     try {
@@ -276,12 +282,15 @@ export default function InventoryConfigView({ configData }) {
   async function handleInlineEdit(row, key, value) {
     if (isBusy || !row?.id) return;
     const id = row.id;
-    setRows((prev) => ({
-      ...prev,
-      [activeEntityKey]: prev[activeEntityKey].map((r) =>
-        String(r?.id) === String(id) ? { ...r, [key]: value || null } : r
-      ),
-    }));
+    setRows((prev) => {
+      if (!prev[activeEntityKey]) return prev;
+      return {
+        ...prev,
+        [activeEntityKey]: prev[activeEntityKey].map((r) =>
+          String(r?.id) === String(id) ? { ...r, [key]: value || null } : r
+        ),
+      };
+    });
 
     setIsBusy(true);
     try {
@@ -330,10 +339,10 @@ export default function InventoryConfigView({ configData }) {
       setIsBusy(true);
       try {
         const created = await createEntityAction(activeEntityKey, { name, key, description });
-        setRows((prev) => ({
-          ...prev,
-          [activeEntityKey]: [...prev[activeEntityKey], mapEntityRow(created, prev[activeEntityKey].length)],
-        }));
+        setRows((prev) => {
+          const current = prev[activeEntityKey] || [];
+          return { ...prev, [activeEntityKey]: [...current, mapEntityRow(created, current.length)] };
+        });
         setDialog({ kind: null, target: null, nextIsActive: null });
         setDraft({ name: "", key: "", description: "" });
         toastSuccess(`"${name}" added.`);
@@ -355,12 +364,15 @@ export default function InventoryConfigView({ configData }) {
       const id = row.id;
       const keyField = entityConfig?.keyField || "key";
 
-      setRows((prev) => ({
-        ...prev,
-        [activeEntityKey]: prev[activeEntityKey].map((r) =>
-          String(r?.id) === String(id) ? { ...r, name, [keyField]: key, description } : r
-        ),
-      }));
+      setRows((prev) => {
+        if (!prev[activeEntityKey]) return prev;
+        return {
+          ...prev,
+          [activeEntityKey]: prev[activeEntityKey].map((r) =>
+            String(r?.id) === String(id) ? { ...r, name, [keyField]: key, description } : r
+          ),
+        };
+      });
 
       setIsBusy(true);
       try {
@@ -383,12 +395,15 @@ export default function InventoryConfigView({ configData }) {
       const nextIsActive = Boolean(dialog?.nextIsActive);
       const id = row.id;
 
-      setRows((prev) => ({
-        ...prev,
-        [activeEntityKey]: prev[activeEntityKey].map((r) =>
-          String(r?.id) === String(id) ? { ...r, is_active: nextIsActive, is_active_bool: nextIsActive } : r
-        ),
-      }));
+      setRows((prev) => {
+        if (!prev[activeEntityKey]) return prev;
+        return {
+          ...prev,
+          [activeEntityKey]: prev[activeEntityKey].map((r) =>
+            String(r?.id) === String(id) ? { ...r, is_active: nextIsActive, is_active_bool: nextIsActive } : r
+          ),
+        };
+      });
 
       setIsBusy(true);
       try {
@@ -414,10 +429,13 @@ export default function InventoryConfigView({ configData }) {
     const id = row.id;
     const name = row.name;
 
-    setRows((prev) => ({
-      ...prev,
-      [activeEntityKey]: prev[activeEntityKey].filter((r) => String(r?.id) !== String(id)),
-    }));
+    setRows((prev) => {
+      if (!prev[activeEntityKey]) return prev;
+      return {
+        ...prev,
+        [activeEntityKey]: prev[activeEntityKey].filter((r) => String(r?.id) !== String(id)),
+      };
+    });
 
     setIsBusy(true);
     try {
