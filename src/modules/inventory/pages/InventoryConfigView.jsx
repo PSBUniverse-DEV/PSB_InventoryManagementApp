@@ -227,7 +227,7 @@ export default function InventoryConfigView({ configData }) {
   useEffect(() => {
     const initial = {};
     ENTITY_KEYS.forEach((key) => {
-      initial[key] = (configData[key] || []).map((r, i) => mapEntityRow(r, i));
+      initial[key] = (configData[key] || []).map((r) => mapEntityRow(r));
     });
     setRows(initial);
   }, [configData]);
@@ -246,7 +246,7 @@ export default function InventoryConfigView({ configData }) {
       const data = await loadInventoryConfigData();
       const updated = {};
       ENTITY_KEYS.forEach((key) => {
-        updated[key] = (data[key] || []).map((r, i) => mapEntityRow(r, i));
+        updated[key] = (data[key] || []).map((r) => mapEntityRow(r));
       });
       setRows(updated);
       toastSuccess("Data refreshed.");
@@ -340,7 +340,7 @@ export default function InventoryConfigView({ configData }) {
         const created = await createEntityAction(activeEntityKey, { name, key, description });
         setRows((prev) => {
           const current = prev[activeEntityKey] || [];
-          return { ...prev, [activeEntityKey]: [...current, mapEntityRow(created, current.length)] };
+          return { ...prev, [activeEntityKey]: [...current, mapEntityRow(created)] };
         });
         setDialog({ kind: null, target: null, nextIsActive: null });
         setDraft({ name: "", key: "", description: "" });

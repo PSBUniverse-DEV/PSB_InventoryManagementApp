@@ -63,12 +63,11 @@ export function isEntityActive(row) {
   return !(text === "false" || text === "0" || text === "f" || text === "n" || text === "no");
 }
 
-export function mapEntityRow(row, index) {
+export function mapEntityRow(row) {
   return {
     ...row,
-    id: row?.id ?? `entity-${index}`,
     name: row?.name || "Unknown",
-    display_order: row?.display_order || row?.sort_order || index + 1,
+    display_order: row?.display_order || row?.sort_order || 1,
     is_active_bool: isEntityActive(row),
   };
 }

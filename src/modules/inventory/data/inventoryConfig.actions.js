@@ -73,7 +73,8 @@ export async function loadInventoryConfigData() {
       .order("name", { ascending: true });
 
     if (error) throw new Error(`Failed to load ${key}: ${error.message}`);
-    results[key] = data ?? [];
+    const pkColumn = PK_MAP[key];
+    results[key] = (data ?? []).map((r) => ({ ...r, id: r[pkColumn] }));
   }
 
   return results;
@@ -92,7 +93,8 @@ export async function createEntityAction(entityKey, payload) {
     .single();
 
   if (error) throw new Error(`Failed to create ${entityKey}: ${error.message}`);
-  return data;
+  const pkColumn = getPkColumn(entityKey);
+  return { ...data, id: data[pkColumn] };
 }
 
 // ─── UPDATE ─────────────────────────────────────────────────
@@ -109,7 +111,8 @@ export async function updateEntityAction(entityKey, id, updates) {
     .single();
 
   if (error) throw new Error(`Failed to update ${entityKey}: ${error.message}`);
-  return data;
+  const pkColumn = getPkColumn(entityKey);
+  return { ...data, id: data[pkColumn] };
 }
 
 // ─── DEACTIVATE ─────────────────────────────────────────────
