@@ -1,0 +1,247 @@
+/**
+ * Inventory Config Module Styles — Mobile-first
+ * Uses PSBUniverse design tokens from src/styles/variables.css.
+ */
+
+.inventory-config-layout {
+  padding: 1rem;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.inventory-config-header {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.inventory-config-title {
+  font-family: var(--psb-serif);
+  font-size: 1.25rem;
+  font-weight: 700;
+  margin-bottom: 0.15rem;
+  color: var(--psb-text);
+}
+
+.inventory-config-subtitle {
+  color: var(--psb-muted);
+  font-size: 0.85rem;
+  margin-bottom: 0;
+}
+
+.inventory-config-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+/* ─── Mobile nav (default visible) ─── */
+
+.inventory-config-mobile-nav {
+  margin-bottom: 1rem;
+}
+
+.inventory-config-mobile-nav .form-select {
+  border-radius: 0.55rem;
+  border-color: var(--psb-border);
+  color: var(--psb-text);
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+/* ─── Side nav (default hidden on mobile) ─── */
+
+.inventory-config-side-nav {
+  display: none;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.inventory-config-side-nav-label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--psb-muted);
+  margin-bottom: 0.25rem;
+}
+
+.inventory-config-side-nav-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.inventory-config-side-nav-item {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 0.55rem 0.75rem;
+  border-radius: 0.45rem;
+  border: 1px solid var(--psb-border);
+  background: var(--psb-surface);
+  color: var(--psb-text);
+  font-size: 0.85rem;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background-color 0.15s ease, color 0.15s ease;
+}
+
+.inventory-config-side-nav-item:hover {
+  border-color: var(--psb-brand);
+  background: #f2f7fb;
+}
+
+.inventory-config-side-nav-item.is-active {
+  border-color: var(--psb-brand);
+  background: #edf6ff;
+  color: var(--psb-brand);
+  font-weight: 600;
+}
+
+/* ─── Split layout ─── */
+
+.inventory-config-split {
+  display: block;
+}
+
+.inventory-config-content {
+  min-width: 0;
+}
+
+.inventory-config-panel {
+  background: var(--psb-surface);
+  border: 1px solid var(--psb-border);
+  border-radius: 0.5rem;
+  padding: 1rem;
+}
+
+.inventory-config-table-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+}
+
+.inventory-config-editor-title {
+  font-family: var(--psb-serif);
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--psb-text);
+}
+
+.inventory-config-editor-description {
+  font-size: 0.8rem;
+  color: var(--psb-muted);
+}
+
+/* ─── Inline edit cells ─── */
+
+.inventory-config-inline-input {
+  width: 100%;
+  min-width: 80px;
+}
+
+.inventory-config-inline-value {
+  display: inline-block;
+  padding: 0.25rem 0;
+  color: var(--psb-text);
+  word-break: break-word;
+}
+
+/* ─── Status toggle ─── */
+
+.inventory-config-status-toggle {
+  background: none;
+  border: none;
+  padding: 0.2rem;
+  cursor: pointer;
+  border-radius: 0.25rem;
+  transition: background-color 0.15s ease;
+}
+
+.inventory-config-status-toggle:hover:not(:disabled) {
+  background: var(--psb-bg);
+}
+
+.inventory-config-status-toggle:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* ─── Batch controls ─── */
+
+.inventory-config-batch-controls {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  margin-bottom: 1rem;
+  background: var(--psb-bg);
+  border: 1px solid var(--psb-border);
+  border-radius: 0.45rem;
+}
+
+.inventory-config-batch-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  font-size: 0.8rem;
+  color: var(--psb-muted);
+}
+
+.inventory-config-batch-summary.is-dirty {
+  color: var(--psb-status-pending);
+  font-weight: 600;
+}
+
+.inventory-config-batch-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+/* ─── Responsive tables ─── */
+
+.inventory-config-panel .psb-ui-table-shell {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.inventory-config-panel .table {
+  min-width: 600px;
+}
+
+/* ─── TABLET / DESKTOP ─── */
+
+@media (min-width: 992px) {
+  .inventory-config-layout {
+    padding: 1.25rem 1.5rem;
+  }
+
+  .inventory-config-header {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .inventory-config-mobile-nav {
+    display: none;
+  }
+
+  .inventory-config-split {
+    display: grid;
+    grid-template-columns: 240px 1fr;
+    gap: 1.25rem;
+  }
+
+  .inventory-config-side-nav {
+    display: flex;
+  }
+}

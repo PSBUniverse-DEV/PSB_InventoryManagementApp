@@ -1,32 +1,70 @@
+/**
+ * Client Component — InventoryConfigView.jsx
+ *
+ * Configuration master data using inline/batch editing.
+ * Add, edit, toggle active status, reorder, and delete rows directly in the
+ * table, then save the whole batch with one action.
+ */
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { Button, InlineEditCell, Input, Modal, StatusBadge, TableZ, toastError, toastSuccess } from "@/shared/components/ui";
+import "./InventoryConfigView.css";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  ENTITY_CONFIGS, ENTITY_KEYS, getEntityConfig,
-  mapEntityRow, isEntityActive,
+  Button, Modal, StatusBadge, TableZ, toastError, toastSuccess,
+} from "@/shared/components/ui";
+import {
+  ENTITY_KEYS, getEntityConfig,
+  mapEntityRow,
 } from "../data/inventoryHelpers.data.js";
 import {
   createEntityAction,
   updateEntityAction,
-  deactivateEntityAction,
   hardDeleteEntityAction,
   saveEntityOrderAction,
   loadInventoryConfigData,
 } from "../data/inventoryConfig.actions.js";
 
+// ─── HELPERS ────────────────────────────────────────────────
+
+function createEmptyDraft(entityKey) {
+  const config = getEntityConfig(entityKey);
+  return {
+    id: `tmp-${entityKey}-${Date.now()}`,
+    name: "",
+    [config?.keyField || "key"]: "",
+    description: "",
+    is_active: true,
+    is_active_bool: true,
+    display_order: 0,
+  };
+}
+
+function buildPayload(entityKey, row) {
+  const config = getEntityConfig(entityKey);
+  const payload = {
+    name: String(row?.name || "").trim(),
+    description: String(row?.description || "").trim() || null,
+    is_active: row?.is_active !== false && row?.is_active !== 0,
+    display_order: row?.display_order || 0,
+  };
+  if (config?.hasKey || config?.hasAbbreviation) {
+    payload[config.keyField] = String(row?.[config.keyField] || "").trim() || null;
+  }
+  return payload;
+}
+
 // ─── SUB-COMPONENTS ─────────────────────────────────────────
 
-function ConfigHeader({ hasChanges, isBusy, onRefresh, openAddDialog, entityLabel }) {
+function ConfigHeader({ isBusy, onRefresh, openAddRow, entityLabel }) {
   return (
-    <div className="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
+    <div className="inventory-config-header">
       <div>
-        <h1 className="h3 mb-1">Configuration and Settings</h1>
-        <p className="text-muted mb-0">Manage master data tables for the Inventory module.</p>
+        <h1 className="inventory-config-title">Configuration and Settings</h1>
+        <p className="inventory-config-subtitle">Manage master data tables for the Inventory module.</p>
       </div>
-      <div className="d-flex flex-wrap align-items-center justify-content-end gap-2">
+      <div className="inventory-config-actions">
         <Button type="button" size="sm" variant="ghost" disabled={isBusy} onClick={onRefresh}>Refresh</Button>
-        <Button type="button" size="sm" variant="success" disabled={isBusy} onClick={openAddDialog}>+ Add {entityLabel}</Button>
+        <Button type="button" size="sm" variant="success" disabled={isBusy} onClick={openAddRow}>+ Add {entityLabel}</Button>
       </div>
     </div>
   );
@@ -34,20 +72,18 @@ function ConfigHeader({ hasChanges, isBusy, onRefresh, openAddDialog, entityLabe
 
 function ConfigSideNav({ activeEntityKey, onSelect }) {
   return (
-    <div className="setup-side-nav">
-      <div className="setup-side-nav-label">Master Data</div>
-      <div className="setup-side-nav-list">
+    <div className="inventory-config-side-nav">
+      <div className="inventory-config-side-nav-label">Master Data</div>
+      <div className="inventory-config-side-nav-list">
         {ENTITY_KEYS.map((key) => {
           const config = getEntityConfig(key);
           return (
             <button
               key={key}
               onClick={() => onSelect(key)}
-              className={`setup-side-nav-item${activeEntityKey === key ? " is-active" : ""}`}
+              className={`inventory-config-side-nav-item${activeEntityKey === key ? " is-active" : ""}`}
             >
-              <span className="setup-side-nav-item-main">
-                <span className="setup-side-nav-item-title">{config?.label || key}</span>
-              </span>
+              <span className="inventory-config-side-nav-item-title">{config?.label || key}</span>
             </button>
           );
         })}
@@ -56,165 +92,34 @@ function ConfigSideNav({ activeEntityKey, onSelect }) {
   );
 }
 
-function ConfigTable({
-  rows, entityKey, isBusy, editingId, onStartEdit, onStopEdit, onInlineEdit,
-  openToggleDialog, onDelete, handleReorder, onRefresh,
-}) {
-  const config = getEntityConfig(entityKey);
-
-  const columns = useMemo(() => {
-    const cols = [
-      {
-        key: "name", label: "Name", width: "28%", sortable: true,
-        render: (row) => {
-          const isEditing = String(row?.id ?? "") === String(editingId ?? "");
-          return (
-            <InlineEditCell
-              value={row?.name || ""}
-              onCommit={(val) => onInlineEdit?.(row, "name", val)}
-              onCancel={onStopEdit}
-              disabled={!isEditing || isBusy}
-            />
-          );
-        },
-      },
-    ];
-
-    if (config?.hasKey || config?.hasAbbreviation) {
-      cols.push({
-        key: config.keyField, label: config.keyLabel, width: "18%", sortable: true,
-        render: (row) => {
-          const isEditing = String(row?.id ?? "") === String(editingId ?? "");
-          return (
-            <InlineEditCell
-              value={row?.[config.keyField] || ""}
-              onCommit={(val) => onInlineEdit?.(row, config.keyField, val)}
-              onCancel={onStopEdit}
-              disabled={!isEditing || isBusy}
-            />
-          );
-        },
-      });
-    }
-
-    cols.push({
-      key: "description", label: "Description", width: "34%", sortable: true,
-      render: (row) => {
-        const isEditing = String(row?.id ?? "") === String(editingId ?? "");
-        return (
-          <InlineEditCell
-            value={row?.description || ""}
-            onCommit={(val) => onInlineEdit?.(row, "description", val)}
-            onCancel={onStopEdit}
-            disabled={!isEditing || isBusy}
-          />
-        );
-      },
-    });
-
-    cols.push({
-      key: "is_active_bool", label: "Active", width: "12%", sortable: true, align: "center",
-      render: (row) => <StatusBadge status={row?.is_active_bool ? "active" : "inactive"} />,
-    });
-
-    return cols;
-  }, [editingId, isBusy, onInlineEdit, onStopEdit, config]);
-
-  const actions = useMemo(() => [
-    {
-      key: "edit", label: "Edit", type: "secondary", icon: "pen",
-      visible: (r) => String(r?.id ?? "") !== String(editingId ?? ""),
-      disabled: () => isBusy,
-      onClick: (r) => onStartEdit(r),
-    },
-    {
-      key: "cancel-edit", label: "Cancel", type: "secondary", icon: "xmark",
-      visible: (r) => String(r?.id ?? "") === String(editingId ?? ""),
-      onClick: () => onStopEdit(),
-    },
-    {
-      key: "toggle", label: (r) => r?.is_active_bool ? "Deactivate" : "Activate",
-      type: "secondary", icon: (r) => r?.is_active_bool ? "ban" : "check",
-      visible: (r) => String(r?.id ?? "") !== String(editingId ?? ""),
-      disabled: () => isBusy,
-      onClick: (r) => openToggleDialog(r),
-    },
-    {
-      key: "delete", label: "Delete", type: "danger", icon: "trash",
-      visible: (r) => String(r?.id ?? "") !== String(editingId ?? ""),
-      confirm: true,
-      confirmMessage: (r) => `Permanently delete ${r?.name || "this item"}? This cannot be undone.`,
-      disabled: () => isBusy,
-      onClick: (r) => onDelete(r),
-    },
-  ], [editingId, isBusy, onStartEdit, onStopEdit, openToggleDialog, onDelete]);
-
+function BatchControls({ diff, onSave, onCancel, isBusy }) {
+  if (!diff?.hasPendingChanges) return null;
   return (
-    <TableZ
-      columns={columns}
-      data={rows}
-      rowIdKey="id"
-      actions={actions}
-      hideFooter
-      draggable={!isBusy}
-      onReorder={handleReorder}
-      emptyMessage={`No ${config?.label?.toLowerCase() || "items"} found.`}
-    />
+    <div className="inventory-config-batch-controls">
+      <span className={`inventory-config-batch-summary${diff.hasPendingChanges ? " is-dirty" : ""}`}>
+        {diff.newRows > 0 && <span>{diff.newRows} new</span>}
+        {diff.modifiedRows > 0 && <span>{diff.modifiedRows} modified</span>}
+        {diff.removedRows > 0 && <span>{diff.removedRows} removed</span>}
+      </span>
+      <div className="inventory-config-batch-actions">
+        <Button type="button" size="sm" variant="success" onClick={onSave} loading={isBusy}>Save changes</Button>
+        <Button type="button" size="sm" variant="ghost" onClick={onCancel} disabled={isBusy}>Cancel</Button>
+      </div>
+    </div>
   );
 }
 
-function ConfigDialog({ dialog, draft, entityKey, isBusy, setDraft, closeDialog, onConfirm }) {
-  const kind = dialog?.kind;
-  const config = getEntityConfig(entityKey);
-
-  if (!kind) return null;
-
-  const title = kind === "add" ? `Add ${config?.label || "Item"}`
-    : kind === "edit" ? `Edit ${config?.label || "Item"}`
-    : kind === "toggle" ? `${dialog?.nextIsActive ? "Activate" : "Deactivate"} ${config?.label || "Item"}`
-    : "";
-
-  const confirmLabel = kind === "add" ? `Add ${config?.label || "Item"}`
-    : kind === "edit" ? "Save"
-    : kind === "toggle" ? (dialog?.nextIsActive ? "Activate" : "Deactivate")
-    : "OK";
-
-  const confirmVariant = kind === "add" ? "success" : kind === "edit" ? "primary" : "warning";
-
-  const footer = (
-    <>
-      <Button type="button" variant="ghost" onClick={closeDialog} disabled={isBusy}>Cancel</Button>
-      <Button type="button" variant={confirmVariant} onClick={onConfirm} loading={isBusy}>{confirmLabel}</Button>
-    </>
-  );
-
-  const isForm = kind === "add" || kind === "edit";
-
+function StatusToggle({ active, onChange, disabled }) {
   return (
-    <Modal show onHide={closeDialog} title={title} footer={footer}>
-      {isForm ? (
-        <div className="d-flex flex-column gap-3">
-          <div>
-            <label className="form-label mb-1">Name</label>
-            <Input value={draft.name} onChange={(e) => setDraft((p) => ({ ...p, name: e.target.value }))} placeholder={config?.namePlaceholder || "Enter name"} autoFocus />
-          </div>
-          {(config?.hasKey || config?.hasAbbreviation) ? (
-            <div>
-              <label className="form-label mb-1">{config.keyLabel}</label>
-              <Input value={draft.key} onChange={(e) => setDraft((p) => ({ ...p, key: e.target.value }))} placeholder={config?.keyPlaceholder || "Enter key"} />
-              <small className="text-muted d-block mt-1">Unique identifier used internally.</small>
-            </div>
-          ) : null}
-          <div>
-            <label className="form-label mb-1">Description</label>
-            <Input as="textarea" rows={3} value={draft.description} onChange={(e) => setDraft((p) => ({ ...p, description: e.target.value }))} placeholder="Enter description" />
-          </div>
-        </div>
-      ) : null}
-      {kind === "toggle" ? (
-        <p className="mb-0">{dialog?.nextIsActive ? "Activate" : "Deactivate"} <strong>{dialog?.target?.name || ""}</strong>?</p>
-      ) : null}
-    </Modal>
+    <button
+      type="button"
+      className="inventory-config-status-toggle"
+      onClick={onChange}
+      disabled={disabled}
+      aria-label={active ? "Deactivate" : "Activate"}
+    >
+      <StatusBadge status={active ? "active" : "inactive"} />
+    </button>
   );
 }
 
@@ -223,6 +128,9 @@ function ConfigDialog({ dialog, draft, entityKey, isBusy, setDraft, closeDialog,
 export default function InventoryConfigView({ configData }) {
   const [activeEntityKey, setActiveEntityKey] = useState("categories");
   const [rows, setRows] = useState({});
+  const [isBusy, setIsBusy] = useState(false);
+  const [editingId, setEditingId] = useState(null);
+  const [dialog, setDialog] = useState({ kind: null, target: null });
 
   useEffect(() => {
     const initial = {};
@@ -231,16 +139,22 @@ export default function InventoryConfigView({ configData }) {
     });
     setRows(initial);
   }, [configData]);
-  const [isBusy, setIsBusy] = useState(false);
-  const [editingId, setEditingId] = useState(null);
-  const [dialog, setDialog] = useState({ kind: null, target: null, nextIsActive: null });
-  const [draft, setDraft] = useState({ name: "", key: "", description: "" });
 
-  const currentRows = (rows[activeEntityKey] || []);
+  const currentRows = useMemo(() => rows[activeEntityKey] || [], [rows, activeEntityKey]);
   const entityConfig = getEntityConfig(activeEntityKey);
   const entityLabel = entityConfig?.label || "Item";
-  
-  async function refresh() {
+
+  const batchFields = useMemo(() => {
+    const fields = [{ key: "name", type: "text" }];
+    if (entityConfig?.hasKey || entityConfig?.hasAbbreviation) {
+      fields.push({ key: entityConfig.keyField, type: "text" });
+    }
+    fields.push({ key: "description", type: "text" });
+    fields.push({ key: "is_active", type: "boolean" });
+    return fields;
+  }, [entityConfig]);
+
+  const refresh = useCallback(async () => {
     setIsBusy(true);
     try {
       const data = await loadInventoryConfigData();
@@ -249,21 +163,95 @@ export default function InventoryConfigView({ configData }) {
         updated[key] = (data[key] || []).map((r) => mapEntityRow(r));
       });
       setRows(updated);
+      setEditingId(null);
       toastSuccess("Data refreshed.");
     } catch (err) {
       toastError(err?.message || "Failed to refresh data.");
     } finally {
       setIsBusy(false);
     }
-  }
+  }, []);
 
-  async function handleReorder(next) {
+  const setRowsForActive = useCallback((next) => {
+    setRows((prev) => ({ ...prev, [activeEntityKey]: next }));
+  }, [activeEntityKey]);
+
+  const startEdit = useCallback((row) => {
     if (isBusy) return;
-    const reordered = (Array.isArray(next) ? next : []).map((r, i) => ({ ...r, display_order: i + 1 }));
-    setRows((prev) => {
-      if (!prev[activeEntityKey]) return prev;
-      return { ...prev, [activeEntityKey]: reordered };
-    });
+    setEditingId(String(row?.id ?? ""));
+  }, [isBusy]);
+
+  const stopEdit = useCallback(() => {
+    setEditingId(null);
+  }, []);
+
+  const handleInlineEdit = useCallback((row, key, value) => {
+    const id = row?.id;
+    if (!id) return;
+    setRows((prev) => ({
+      ...prev,
+      [activeEntityKey]: prev[activeEntityKey].map((r) =>
+        String(r?.id) === String(id) ? { ...r, [key]: value || null } : r
+      ),
+    }));
+    setEditingId(null);
+  }, [activeEntityKey]);
+
+  const addRow = useCallback(() => {
+    if (isBusy) return;
+    const draft = createEmptyDraft(activeEntityKey);
+    setRowsForActive([mapEntityRow(draft), ...currentRows]);
+    setEditingId(draft.id);
+  }, [activeEntityKey, currentRows, isBusy, setRowsForActive]);
+
+  const toggleActive = useCallback((row) => {
+    if (isBusy || !row?.id) return;
+    const nextIsActive = !row.is_active_bool;
+    setRows((prev) => ({
+      ...prev,
+      [activeEntityKey]: prev[activeEntityKey].map((r) =>
+        String(r?.id) === String(row.id)
+          ? { ...r, is_active: nextIsActive, is_active_bool: nextIsActive }
+          : r
+      ),
+    }));
+  }, [activeEntityKey, isBusy]);
+
+  const confirmDelete = useCallback((row) => {
+    if (isBusy || !row?.id) return;
+    setDialog({ kind: "delete", target: row });
+  }, [isBusy]);
+
+  const handleBatchSave = useCallback(async (payload) => {
+    setIsBusy(true);
+    try {
+      const { created, updated, deleted } = payload || {};
+
+      for (const item of created || []) {
+        await createEntityAction(activeEntityKey, buildPayload(activeEntityKey, item.data));
+      }
+
+      for (const item of updated || []) {
+        await updateEntityAction(activeEntityKey, item.id, buildPayload(activeEntityKey, item.data));
+      }
+
+      for (const item of deleted || []) {
+        await hardDeleteEntityAction(activeEntityKey, item.id);
+      }
+
+      await refresh();
+      toastSuccess("Changes saved.");
+    } catch (err) {
+      toastError(err?.message || "Failed to save changes.");
+    } finally {
+      setIsBusy(false);
+    }
+  }, [activeEntityKey, refresh]);
+
+  const handleReorder = useCallback(async (nextRows) => {
+    if (isBusy) return;
+    const reordered = (Array.isArray(nextRows) ? nextRows : []).map((r, i) => ({ ...r, display_order: i + 1 }));
+    setRowsForActive(reordered);
 
     setIsBusy(true);
     try {
@@ -276,231 +264,231 @@ export default function InventoryConfigView({ configData }) {
     } finally {
       setIsBusy(false);
     }
-  }
+  }, [activeEntityKey, isBusy, refresh, setRowsForActive]);
 
-  async function handleInlineEdit(row, key, value) {
-    if (isBusy || !row?.id) return;
-    const id = row.id;
-    setRows((prev) => {
-      if (!prev[activeEntityKey]) return prev;
-      return {
-        ...prev,
-        [activeEntityKey]: prev[activeEntityKey].map((r) =>
-          String(r?.id) === String(id) ? { ...r, [key]: value || null } : r
-        ),
-      };
-    });
+  const executeDelete = useCallback(async () => {
+    const row = dialog?.target;
+    if (!row?.id) return;
+    setDialog({ kind: null, target: null });
 
     setIsBusy(true);
     try {
-      await updateEntityAction(activeEntityKey, id, { [key]: value || null });
-      toastSuccess("Updated.");
-      setEditingId(null);
-    } catch (err) {
-      toastError(err?.message || "Failed to update.");
-      await refresh();
-    } finally {
-      setIsBusy(false);
-    }
-  }
-
-  function openAddDialog() {
-    setDraft({ name: "", key: "", description: "" });
-    setDialog({ kind: "add", target: null, nextIsActive: true });
-  }
-
-  function openEditDialog(row) {
-    if (isBusy) return;
-    const config = getEntityConfig(activeEntityKey);
-    setDraft({
-      name: String(row?.name || ""),
-      key: String(row?.[config?.keyField || "key"] || ""),
-      description: String(row?.description || ""),
-    });
-    setEditingId(row?.id);
-  }
-
-  function openToggleDialog(row) {
-    if (isBusy) return;
-    setDialog({ kind: "toggle", target: row, nextIsActive: !Boolean(row?.is_active_bool) });
-  }
-
-  async function confirmDialog() {
-    const kind = dialog?.kind;
-    if (!kind) return;
-
-    if (kind === "add") {
-      const name = String(draft.name || "").trim();
-      if (!name) { toastError("Name is required."); return; }
-      const key = String(draft.key || "").trim();
-      const description = String(draft.description || "").trim();
-
-      setIsBusy(true);
-      try {
-        const created = await createEntityAction(activeEntityKey, { name, key, description });
-        setRows((prev) => {
-          const current = prev[activeEntityKey] || [];
-          return { ...prev, [activeEntityKey]: [...current, mapEntityRow(created)] };
-        });
-        setDialog({ kind: null, target: null, nextIsActive: null });
-        setDraft({ name: "", key: "", description: "" });
-        toastSuccess(`"${name}" added.`);
-      } catch (err) {
-        toastError(err?.message || "Failed to add item.");
-      } finally {
-        setIsBusy(false);
-      }
-      return;
-    }
-
-    if (kind === "edit") {
-      const row = dialog?.target;
-      if (!row?.id) { toastError("Invalid item."); return; }
-      const name = String(draft.name || "").trim();
-      if (!name) { toastError("Name is required."); return; }
-      const key = String(draft.key || "").trim();
-      const description = String(draft.description || "").trim();
-      const id = row.id;
-      const keyField = entityConfig?.keyField || "key";
-
-      setRows((prev) => {
-        if (!prev[activeEntityKey]) return prev;
-        return {
-          ...prev,
-          [activeEntityKey]: prev[activeEntityKey].map((r) =>
-            String(r?.id) === String(id) ? { ...r, name, [keyField]: key, description } : r
-          ),
-        };
-      });
-
-      setIsBusy(true);
-      try {
-        await updateEntityAction(activeEntityKey, id, { name, key, description });
-        setDialog({ kind: null, target: null, nextIsActive: null });
-        setEditingId(null);
-        toastSuccess(`"${name}" updated.`);
-      } catch (err) {
-        toastError(err?.message || "Failed to update.");
-        await refresh();
-      } finally {
-        setIsBusy(false);
-      }
-      return;
-    }
-
-    if (kind === "toggle") {
-      const row = dialog?.target;
-      if (!row?.id) { toastError("Invalid item."); return; }
-      const nextIsActive = Boolean(dialog?.nextIsActive);
-      const id = row.id;
-
-      setRows((prev) => {
-        if (!prev[activeEntityKey]) return prev;
-        return {
-          ...prev,
-          [activeEntityKey]: prev[activeEntityKey].map((r) =>
-            String(r?.id) === String(id) ? { ...r, is_active: nextIsActive, is_active_bool: nextIsActive } : r
-          ),
-        };
-      });
-
-      setIsBusy(true);
-      try {
-        if (nextIsActive) {
-          await updateEntityAction(activeEntityKey, id, { is_active: true });
-        } else {
-          await deactivateEntityAction(activeEntityKey, id);
-        }
-        setDialog({ kind: null, target: null, nextIsActive: null });
-        toastSuccess(`"${row.name}" ${nextIsActive ? "activated" : "deactivated"}.`);
-      } catch (err) {
-        toastError(err?.message || "Failed to update status.");
-        await refresh();
-      } finally {
-        setIsBusy(false);
-      }
-      return;
-    }
-  }
-
-  async function handleDelete(row) {
-    if (isBusy || !row?.id) return;
-    const id = row.id;
-    const name = row.name;
-
-    setRows((prev) => {
-      if (!prev[activeEntityKey]) return prev;
-      return {
+      await hardDeleteEntityAction(activeEntityKey, row.id);
+      setRows((prev) => ({
         ...prev,
-        [activeEntityKey]: prev[activeEntityKey].filter((r) => String(r?.id) !== String(id)),
-      };
-    });
-
-    setIsBusy(true);
-    try {
-      await hardDeleteEntityAction(activeEntityKey, id);
-      toastSuccess(`"${name}" deleted.`);
+        [activeEntityKey]: prev[activeEntityKey].filter((r) => String(r?.id) !== String(row.id)),
+      }));
+      toastSuccess(`"${row.name}" deleted.`);
     } catch (err) {
       toastError(err?.message || "Failed to delete.");
       await refresh();
     } finally {
       setIsBusy(false);
     }
-  }
+  }, [activeEntityKey, dialog, refresh]);
+
+  const columns = useMemo(() => {
+    const cols = [
+      {
+        key: "name",
+        label: "Name",
+        width: "30%",
+        sortable: true,
+        render: (row) => {
+          const isEditing = String(row?.id ?? "") === String(editingId ?? "");
+          return (
+            <InlineEdit
+              value={row?.name || ""}
+              onCommit={(val) => handleInlineEdit(row, "name", val)}
+              onCancel={stopEdit}
+              disabled={!isEditing || isBusy}
+            />
+          );
+        },
+      },
+    ];
+
+    if (entityConfig?.hasKey || entityConfig?.hasAbbreviation) {
+      cols.push({
+        key: entityConfig.keyField,
+        label: entityConfig.keyLabel,
+        width: "20%",
+        sortable: true,
+        render: (row) => {
+          const isEditing = String(row?.id ?? "") === String(editingId ?? "");
+          return (
+            <InlineEdit
+              value={row?.[entityConfig.keyField] || ""}
+              onCommit={(val) => handleInlineEdit(row, entityConfig.keyField, val)}
+              onCancel={stopEdit}
+              disabled={!isEditing || isBusy}
+            />
+          );
+        },
+      });
+    }
+
+    cols.push({
+      key: "description",
+      label: "Description",
+      width: "34%",
+      sortable: true,
+      render: (row) => {
+        const isEditing = String(row?.id ?? "") === String(editingId ?? "");
+        return (
+          <InlineEdit
+            value={row?.description || ""}
+            onCommit={(val) => handleInlineEdit(row, "description", val)}
+            onCancel={stopEdit}
+            disabled={!isEditing || isBusy}
+          />
+        );
+      },
+    });
+
+    cols.push({
+      key: "is_active_bool",
+      label: "Active",
+      width: "12%",
+      sortable: true,
+      align: "center",
+      render: (row) => (
+        <StatusToggle
+          active={row?.is_active_bool}
+          disabled={isBusy}
+          onChange={() => toggleActive(row)}
+        />
+      ),
+    });
+
+    return cols;
+  }, [editingId, entityConfig, isBusy, handleInlineEdit, stopEdit, toggleActive]);
+
+  const actions = useMemo(() => [
+    {
+      key: "edit", label: "Edit", type: "secondary", icon: "pen",
+      visible: (r) => String(r?.id ?? "") !== String(editingId ?? ""),
+      disabled: () => isBusy,
+      onClick: (r) => startEdit(r),
+    },
+    {
+      key: "cancel-edit", label: "Cancel", type: "secondary", icon: "xmark",
+      visible: (r) => String(r?.id ?? "") === String(editingId ?? ""),
+      disabled: () => isBusy,
+      onClick: () => stopEdit(),
+    },
+    {
+      key: "delete", label: "Delete", type: "danger", icon: "trash",
+      visible: (r) => String(r?.id ?? "") !== String(editingId ?? ""),
+      disabled: () => isBusy,
+      onClick: (r) => confirmDelete(r),
+    },
+  ], [editingId, isBusy, startEdit, stopEdit, confirmDelete]);
 
   return (
-    <main className="container py-4">
+    <main className="inventory-config-layout">
       <ConfigHeader
-        hasChanges={false}
         isBusy={isBusy}
         onRefresh={refresh}
-        openAddDialog={openAddDialog}
+        openAddRow={addRow}
         entityLabel={entityLabel}
       />
 
-      <div className="setup-split-layout">
+      <div className="inventory-config-split">
+        {/* Mobile nav */}
+        <div className="inventory-config-mobile-nav">
+          <select
+            className="form-select"
+            value={activeEntityKey}
+            onChange={(e) => { setActiveEntityKey(e.target.value); setEditingId(null); }}
+            aria-label="Select master data"
+          >
+            {ENTITY_KEYS.map((key) => (
+              <option key={key} value={key}>{getEntityConfig(key)?.label || key}</option>
+            ))}
+          </select>
+        </div>
+
         <ConfigSideNav
           activeEntityKey={activeEntityKey}
           onSelect={(key) => { setActiveEntityKey(key); setEditingId(null); }}
         />
 
-        <div className="setup-content-pane">
-          <div className="setup-content-panel">
-            <div className="setup-editor-card">
-              <div className="setup-table-header">
-                <div>
-                  <div className="setup-editor-title">{entityConfig?.label || "Items"}</div>
-                  <div className="setup-editor-description">{entityConfig?.description || ""}</div>
-                </div>
+        <div className="inventory-config-content">
+          <div className="inventory-config-panel">
+            <div className="inventory-config-table-header">
+              <div>
+                <div className="inventory-config-editor-title">{entityConfig?.label || "Items"}</div>
+                <div className="inventory-config-editor-description">{entityConfig?.description || ""}</div>
               </div>
-
-              <ConfigTable
-                rows={currentRows}
-                entityKey={activeEntityKey}
-                isBusy={isBusy}
-                editingId={editingId}
-                onStartEdit={(r) => openEditDialog(r)}
-                onStopEdit={() => setEditingId(null)}
-                onInlineEdit={handleInlineEdit}
-                openToggleDialog={openToggleDialog}
-                onDelete={handleDelete}
-                handleReorder={handleReorder}
-                onRefresh={refresh}
-              />
             </div>
+
+            <BatchControls
+              diff={null}
+              onSave={() => {}}
+              onCancel={() => {}}
+              isBusy={isBusy}
+            />
+
+            <TableZ
+              data={currentRows}
+              columns={columns}
+              rowIdKey="id"
+              actions={actions}
+              batchMode
+              batchFields={batchFields}
+              onBatchSave={handleBatchSave}
+              draggable={!isBusy}
+              onReorder={handleReorder}
+              hideSearch
+              hideFooter
+              emptyMessage={`No ${entityConfig?.label?.toLowerCase() || "items"} found.`}
+            />
           </div>
         </div>
       </div>
 
-      <ConfigDialog
-        dialog={dialog}
-        draft={draft}
-        entityKey={activeEntityKey}
-        isBusy={isBusy}
-        setDraft={setDraft}
-        closeDialog={() => setDialog({ kind: null, target: null, nextIsActive: null })}
-        onConfirm={confirmDialog}
-      />
+      <Modal
+        show={dialog?.kind === "delete"}
+        onHide={() => setDialog({ kind: null, target: null })}
+        title="Confirm Delete"
+        footer={(
+          <>
+            <Button type="button" variant="ghost" size="sm" onClick={() => setDialog({ kind: null, target: null })} disabled={isBusy}>Cancel</Button>
+            <Button type="button" variant="danger" size="sm" onClick={executeDelete} loading={isBusy}>Delete</Button>
+          </>
+        )}
+      >
+        <p className="mb-0">Permanently delete <strong>{dialog?.target?.name || "this item"}</strong>? This cannot be undone.</p>
+      </Modal>
     </main>
   );
+}
+
+// ─── INLINE EDIT CELL WRAPPER ───────────────────────────────
+
+function InlineEdit({ value, onCommit, onCancel, disabled, placeholder }) {
+  if (!disabled) {
+    return (
+      <input
+        className="form-control form-control-sm inventory-config-inline-input"
+        type="text"
+        defaultValue={value}
+        placeholder={placeholder || "--"}
+        autoFocus
+        onBlur={(e) => onCommit?.(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            onCommit?.(e.target.value);
+          }
+          if (e.key === "Escape") {
+            e.preventDefault();
+            onCancel?.();
+          }
+        }}
+      />
+    );
+  }
+  return <span className="inventory-config-inline-value">{value || placeholder || "—"}</span>;
 }
