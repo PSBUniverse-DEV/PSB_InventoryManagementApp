@@ -26,9 +26,9 @@ export async function loadInventoryData() {
 
   return {
     config,
-    items: itemsRes ?? [],
-    warehouses: warehousesRes ?? [],
-    transactions: transactionsRes ?? [],
+    items: (itemsRes ?? []).map((r) => ({ ...r, id: r.id ?? r.item_id })),
+    warehouses: (warehousesRes ?? []).map((r) => ({ ...r, id: r.id ?? r.warehouse_id })),
+    transactions: (transactionsRes ?? []).map((r) => ({ ...r, id: r.id ?? r.transaction_id })),
   };
 }
 
@@ -94,7 +94,7 @@ export async function updateItemAction(id, updates) {
   const { error } = await supabase
     .from("inv_item")
     .update(patch)
-    .eq("id", id);
+    .eq("item_id", id);
 
   if (error) throw new Error(`Failed to update item: ${error.message}`);
 }
@@ -151,13 +151,13 @@ export async function logTransactionAction(entry) {
 
 export async function deleteItemAction(id) {
   const supabase = getSupabaseAdmin();
-  const { error } = await supabase.from("inv_item").delete().eq("id", id);
+  const { error } = await supabase.from("inv_item").delete().eq("item_id", id);
   if (error) throw new Error(`Failed to delete item: ${error.message}`);
 }
 
 export async function deleteWarehouseAction(id) {
   const supabase = getSupabaseAdmin();
-  const { error } = await supabase.from("inv_warehouse").delete().eq("id", id);
+  const { error } = await supabase.from("inv_warehouse").delete().eq("warehouse_id", id);
   if (error) throw new Error(`Failed to delete warehouse: ${error.message}`);
 }
 
