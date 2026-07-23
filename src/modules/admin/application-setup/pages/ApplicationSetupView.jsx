@@ -531,7 +531,8 @@ function ApplicationTable({
   openToggleRoleDialog, openDeactivateRoleDialog, stageHardDeleteRole, onUndoBatchActionRole,
 }) {
   const columns = useMemo(() => [
-    { key: "app_name", label: "Application Name", width: "28%", sortable: true, render: (row) => {
+    { key: "app_id", label: "App ID", width: "10%", sortable: true, render: (row) => <span className="text-muted small">{row?.app_id ?? "--"}</span> },
+    { key: "app_name", label: "Application Name", width: "24%", sortable: true, render: (row) => {
       const m = batchMarker(row?.__batchState || ""); const isEditing = String(row?.app_id ?? "") === String(editingAppId ?? ""); const editDisabled = !isEditing || isSavingOrder || isMutatingAction; const isSelected = isSameId(row?.app_id, selectedApp?.app_id);
       return (<span className={isSelected ? "fw-semibold text-primary" : ""}><InlineEditCell value={row?.app_name || ""} onCommit={(val) => onInlineEdit?.(row, "app_name", val)} onCancel={onStopEditing} disabled={editDisabled} />{m.text ? <span className={m.cls}>{m.text}</span> : null}</span>);
     }},
@@ -539,7 +540,7 @@ function ApplicationTable({
       const isEditing = String(row?.app_id ?? "") === String(editingAppId ?? ""); const editDisabled = !isEditing || isSavingOrder || isMutatingAction;
       return <InlineEditCell value={row?.module_key || ""} onCommit={(val) => onInlineEdit?.(row, "module_key", val)} onCancel={onStopEditing} disabled={editDisabled} />;
     }},
-    { key: "app_desc", label: "Description", width: "34%", sortable: true, render: (row) => {
+    { key: "app_desc", label: "Description", width: "28%", sortable: true, render: (row) => {
       const isEditing = String(row?.app_id ?? "") === String(editingAppId ?? ""); const editDisabled = !isEditing || isSavingOrder || isMutatingAction;
       return <InlineEditCell value={row?.app_desc || ""} onCommit={(val) => onInlineEdit?.(row, "app_desc", val)} onCancel={onStopEditing} disabled={editDisabled} />;
     }},
