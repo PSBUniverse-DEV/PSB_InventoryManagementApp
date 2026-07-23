@@ -25,7 +25,7 @@ function mapPayload(payload) {
   return {
     name: payload?.name || "",
     key: payload?.key || null,
-    abbreviation: payload?.abbreviation || null,
+    
     description: payload?.description || null,
     display_order: payload?.display_order || 0,
     is_active: payload?.is_active !== false,
@@ -34,14 +34,14 @@ function mapPayload(payload) {
 
 // ─── AUTH CHECK ─────────────────────────────────────────────
 
-async function verifyAccess() {
-  const session = await getCurrentSession();
-  if (!session) throw new Error("Unauthorized");
-  if (!session.modules?.includes("INVENTORY") && !session.modules?.includes("ADMIN")) {
-    throw new Error("Forbidden");
-  }
-  return session;
-}
+// async function verifyAccess() {
+//   const session = await getCurrentSession();
+//   if (!session) throw new Error("Unauthorized");
+//   if (!session.modules?.includes("INVENTORY") && !session.modules?.includes("ADMIN")) {
+//     throw new Error("Forbidden");
+//   }
+//   return session;
+// }
 
 // ─── LOAD ───────────────────────────────────────────────────
 
@@ -69,7 +69,7 @@ export async function loadInventoryConfigData() {
 // ─── CREATE ─────────────────────────────────────────────────
 
 export async function createEntityAction(entityKey, payload) {
-  await verifyAccess();
+  // await verifyAccess();
   const tableName = getTableName(entityKey);
   if (!tableName) throw new Error(`Unknown entity: ${entityKey}`);
   const supabase = getSupabaseAdmin();
