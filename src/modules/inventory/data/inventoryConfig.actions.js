@@ -21,15 +21,20 @@ function getTableName(entityKey) {
   return tableMap[entityKey];
 }
 
-function mapPayload(payload) {
-  return {
+function mapPayload(entityKey, payload) {
+  const base = {
     name: payload?.name || "",
-    key: payload?.key || null,
-    
     description: payload?.description || null,
     display_order: payload?.display_order || 0,
     is_active: payload?.is_active !== false,
   };
+  // units use "abbreviation" column, all others use "key"
+  if (entityKey === "units") {
+    base.abbreviation = payload?.key || null;
+  } else {
+    base.key = payload?.key || null;
+  }
+  return base;
 }
 
 // ─── AUTH CHECK ─────────────────────────────────────────────
@@ -76,7 +81,7 @@ export async function createEntityAction(entityKey, payload) {
 
   const { data, error } = await supabase
     .from(tableName)
-    .insert([mapPayload(payload)])
+    .insert([mapPayload(entityKey, payload)])
     .select()
     .single();
 
@@ -102,7 +107,7 @@ export async function updateEntityAction(entityKey, id, updates) {
 
   const { data, error } = await supabase
     .from(tableName)
-    .update(mapPayload(updates))
+    .update(mapPayload(entityKey, updates))
     .eq(pkColumn, id)
     .select()
     .single();
