@@ -81,6 +81,43 @@ export default function InventoryView({ initialData }) {
     [data],
   );
 
+  const categoryLookup = useMemo(() => {
+    const map = {};
+    (data?.config?.categories || []).forEach((c) => { map[String(c.id)] = c.name; });
+    return map;
+  }, [data]);
+
+  const itemCategoryName = useCallback(
+    (item) => categoryLookup[String(item?.category_id)] || "Unknown",
+    [categoryLookup],
+  );
+
+  const unitLookup = useMemo(() => {
+    const map = {};
+    (data?.config?.units || []).forEach((u) => { map[String(u.id)] = u.abbreviation; });
+    return map;
+  }, [data]);
+
+  const itemUnitAbbrev = useCallback(
+    (item) => unitLookup[String(item?.unit_id)] || "pcs",
+    [unitLookup],
+  );
+
+  const statusLookup = useMemo(() => {
+    const map = {};
+    (data?.config?.statuses || []).forEach((s) => { map[String(s.id)] = s.name; });
+    return map;
+  }, [data]);
+
+  const statusIdByName = useCallback(
+    (name) => {
+      const statuses = data?.config?.statuses || [];
+      const found = statuses.find((s) => s.name === name);
+      return found?.id || null;
+    },
+    [data],
+  );
+
   // ─── Mutation helpers ────────────────────────────────────
   const runMutation = useCallback(async (fn, txEntry) => {
     if (isBusy) return;
@@ -107,15 +144,20 @@ export default function InventoryView({ initialData }) {
     });
   }, [data, filterWh, search]);
 
-  const materials = useMemo(() => filteredItems.filter((i) => i.category === "Material"), [filteredItems]);
-  const equipmentList = useMemo(() => filteredItems.filter((i) => i.category === "Equipment"), [filteredItems]);
+  const resolveCategory = useCallback(
+    (item) => categoryLookup[String(item?.category_id)] || "",
+    [categoryLookup],
+  );
+
+  const materials = useMemo(() => filteredItems.filter((i) => resolveCategory(i) === "Material"), [filteredItems, resolveCategory]);
+  const equipmentList = useMemo(() => filteredItems.filter((i) => resolveCategory(i) === "Equipment"), [filteredItems, resolveCategory]);
   const lowStock = useMemo(
-    () => (data?.items || []).filter((i) => i.category === "Material" && (i.quantity || 0) <= (i.min_threshold || 0)),
-    [data],
+    () => (data?.items || []).filter((i) => resolveCategory(i) === "Material" && (i.quantity || 0) <= (i.min_threshold || 0)),
+    [data, resolveCategory],
   );
   const checkedOut = useMemo(
-    () => (data?.items || []).filter((i) => i.category === "Equipment" && i.status === "In Use").length,
-    [data],
+    () => (data?.items || []).filter((i) => resolveCategory(i) === "Equipment" && statusLookup[String(i.status_id)] === "In Use").length,
+    [data, resolveCategory, statusLookup],
   );
 
   const openModal = useCallback((type, item) => {
@@ -160,21 +202,24 @@ export default function InventoryView({ initialData }) {
       showToast("Enter a valid quantity.", "error");
       return;
     }
+    const unitAbbrev = unitLookup[String(form.unit_id)] || "pcs";
     runMutation(
       () => updateItemAction(form.id, { quantity: (form.quantity || 0) + qty }),
-      { type: "Restock", itemName: form.name, detail: `+${qty} ${form.unit}`, warehouseName: whName(form.warehouse_id) },
+      { type: "Restock", itemName: form.name, detail: `+${qty} ${unitAbbrev}`, warehouseName: whName(form.warehouse_id) },
     );
     closeModal();
-  }, [form, runMutation, showToast, whName, closeModal]);
+  }, [form, runMutation, showToast, whName, unitLookup, closeModal]);
 
   const handleTransfer = useCallback(() => {
-    const qty = form.category === "Equipment" ? 0 : Number(form.qty);
+    const formCatName = categoryLookup[String(form.category_id)] || form.category || "";
+    const isEquipment = formCatName === "Equipment";
+    const qty = isEquipment ? 0 : Number(form.qty);
     const toWh = form.toWarehouseId;
     if (!toWh || String(toWh) === String(form.warehouse_id)) {
       showToast("Choose a different destination location.", "error");
       return;
     }
-    if (form.category === "Material" && (!qty || qty <= 0 || qty > (form.quantity || 0))) {
+    if (!isEquipment && (!qty || qty <= 0 || qty > (form.quantity || 0))) {
       showToast("Enter a valid transfer quantity.", "error");
       return;
     }
@@ -192,18 +237,18 @@ export default function InventoryView({ initialData }) {
       return;
     }
     runMutation(
-      () => updateItemAction(form.id, { status: "In Use", assignedTo: form.assignedTo }),
+      () => updateItemAction(form.id, { statusId: statusIdByName("In Use"), assignedTo: form.assignedTo }),
       { type: "Check out", itemName: form.name, detail: `To ${form.assignedTo}`, warehouseName: whName(form.warehouse_id) },
     );
     closeModal();
-  }, [form, runMutation, showToast, whName, closeModal]);
+  }, [form, runMutation, showToast, whName, statusIdByName, closeModal]);
 
   const handleCheckin = useCallback((item) => {
     runMutation(
-      () => updateItemAction(item.id, { status: "Available", assignedTo: null }),
+      () => updateItemAction(item.id, { statusId: statusIdByName("Available"), assignedTo: null }),
       { type: "Check in", itemName: item.name, detail: `Returned by ${item.assigned_to || "field crew"}`, warehouseName: whName(item.warehouse_id) },
     );
-  }, [runMutation, whName]);
+  }, [runMutation, whName, statusIdByName]);
 
   if (!loaded) {
     return <div className="inventory-loading">Loading inventory...</div>;
@@ -342,6 +387,7 @@ export default function InventoryView({ initialData }) {
                   <EquipmentCard
                     key={item.id}
                     item={item}
+                    config={data?.config}
                     warehouseName={whName(item.warehouse_id)}
                     onCheckout={(it) => openModal("checkout", it)}
                     onCheckin={handleCheckin}
@@ -365,6 +411,7 @@ export default function InventoryView({ initialData }) {
             <WarehouseTable
               warehouses={data?.warehouses || []}
               items={data?.items || []}
+              config={data?.config}
             />
           </div>
         )}
@@ -425,10 +472,17 @@ export default function InventoryView({ initialData }) {
         </Field>
         {modal === "addMaterial" && (
           <>
-            <Field label="Unit"><Input value={form.unit || ""} onChange={(e) => setForm({ ...form, unit: e.target.value })} placeholder="pcs, ft, bags..." /></Field>
+            <Field label="Unit">
+              <select className="form-select" value={form.unitId || ""} onChange={(e) => setForm({ ...form, unitId: e.target.value })}>
+                <option value="">Select unit</option>
+                {(data?.config?.units || []).map((u) => <option key={u.id} value={String(u.id)}>{u.name} ({u.abbreviation})</option>)}
+              </select>
+            </Field>
             <Field label="Starting quantity"><Input type="number" value={form.quantity || ""} onChange={(e) => setForm({ ...form, quantity: e.target.value })} /></Field>
             <Field label="Reorder threshold"><Input type="number" value={form.minThreshold || ""} onChange={(e) => setForm({ ...form, minThreshold: e.target.value })} /></Field>
             <Field label="Unit cost ($)"><Input type="number" value={form.cost || ""} onChange={(e) => setForm({ ...form, cost: e.target.value })} /></Field>
+            <Field label="Wholesale price ($)"><Input type="number" value={form.wholesalePrice || ""} onChange={(e) => setForm({ ...form, wholesalePrice: e.target.value })} /></Field>
+            <Field label="Retail price ($)"><Input type="number" value={form.retailPrice || ""} onChange={(e) => setForm({ ...form, retailPrice: e.target.value })} /></Field>
           </>
         )}
       </Modal>
@@ -439,8 +493,8 @@ export default function InventoryView({ initialData }) {
           <Button variant="primary" size="sm" onClick={handleRestock} loading={isBusy}>Confirm restock</Button>
         </>
       }>
-        <p className="text-muted small">Current quantity: <b>{form.quantity} {form.unit}</b> at {whName(form.warehouse_id)}</p>
-        <Field label={`Quantity to add (${form.unit})`}>
+        <p className="text-muted small">Current quantity: <b>{form.quantity} {unitLookup[String(form.unit_id)] || "pcs"}</b> at {whName(form.warehouse_id)}</p>
+        <Field label={`Quantity to add (${unitLookup[String(form.unit_id)] || "pcs"})`}>
           <Input type="number" value={form.qty || ""} onChange={(e) => setForm({ ...form, qty: e.target.value })} />
         </Field>
       </Modal>
@@ -458,8 +512,8 @@ export default function InventoryView({ initialData }) {
             {(data?.warehouses || []).filter((w) => String(w.id) !== String(form.warehouse_id)).map((w) => <option key={w.id} value={String(w.id)}>{w.name}</option>)}
           </select>
         </Field>
-        {form.category === "Material" && (
-          <Field label={`Quantity to transfer (max ${form.quantity} ${form.unit})`}>
+        {categoryLookup[String(form.category_id)] !== "Equipment" && (
+          <Field label={`Quantity to transfer (max ${form.quantity} ${unitLookup[String(form.unit_id)] || "pcs"})`}>
             <Input type="number" value={form.qty || ""} onChange={(e) => setForm({ ...form, qty: e.target.value })} />
           </Field>
         )}
@@ -483,17 +537,37 @@ export default function InventoryView({ initialData }) {
 //#region ─── SUB-COMPONENTS ─────────────────────────────────────────
 
 function MaterialsTable({ materials, warehouseName, config, onRestock, onTransfer }) {
+  const catLookup = useMemo(() => {
+    const map = {};
+    (config?.categories || []).forEach((c) => { map[String(c.id)] = c.name; });
+    return map;
+  }, [config]);
+
+  const uLookup = useMemo(() => {
+    const map = {};
+    (config?.units || []).forEach((u) => { map[String(u.id)] = u; });
+    return map;
+  }, [config]);
+
   const columns = [
     { key: "name", label: "Name", sortable: true, render: (row) => <span className="fw-semibold">{row.name}</span> },
     { key: "sku", label: "SKU", sortable: true, render: (row) => <span className="inventory-mono text-muted">{row.sku}</span> },
+    { key: "category", label: "Category", sortable: true, render: (row) => <span>{catLookup[String(row.category_id)] || "—"}</span> },
+    { key: "unit", label: "Unit", sortable: true, align: "center", render: (row) => {
+      const u = uLookup[String(row.unit_id)];
+      return u ? <span className="inventory-mono">{u.abbreviation}</span> : <span className="text-muted">—</span>;
+    }},
     { key: "location", label: "Location", sortable: true, render: (row) => warehouseName(row.warehouse_id) },
-    { key: "quantity", label: "Quantity", sortable: true, render: (row) => <span className="inventory-mono">{row.quantity} {getUnitName(config, row.unit)}</span> },
+    { key: "quantity", label: "Qty", sortable: true, align: "center", render: (row) => <span className="inventory-mono">{row.quantity}</span> },
+    { key: "minThreshold", label: "Reorder At", sortable: true, align: "center", render: (row) => <span className="inventory-mono text-muted">{row.min_threshold}</span> },
+    { key: "cost", label: "Cost ($)", sortable: true, align: "right", render: (row) => row.cost ? <span className="inventory-mono">${Number(row.cost).toFixed(2)}</span> : <span className="text-muted">—</span> },
+    { key: "wholesale", label: "Wholesale ($)", sortable: true, align: "right", render: (row) => row.wholesale_price ? <span className="inventory-mono">${Number(row.wholesale_price).toFixed(2)}</span> : <span className="text-muted">—</span> },
+    { key: "retail", label: "Retail ($)", sortable: true, align: "right", render: (row) => row.retail_price ? <span className="inventory-mono">${Number(row.retail_price).toFixed(2)}</span> : <span className="text-muted">—</span> },
     {
-      key: "status", label: "Status", sortable: true, align: "center",
-      render: (row) => {
-        const low = (row.quantity || 0) <= (row.min_threshold || 0);
-        return <Badge bg={low ? "warning" : "success"} text={low ? "dark" : "white"}>{low ? "Low stock" : "OK"}</Badge>;
-      },
+      key: "isActive", label: "Active", sortable: true, align: "center",
+      render: (row) => row.is_active !== false
+        ? <Badge bg="success" text="white">Active</Badge>
+        : <Badge bg="secondary" text="dark">Inactive</Badge>,
     },
   ];
 
@@ -515,8 +589,12 @@ function MaterialsTable({ materials, warehouseName, config, onRestock, onTransfe
   );
 }
 
-function EquipmentCard({ item, warehouseName, onCheckout, onCheckin, onTransfer }) {
-  const statusColor = getEquipmentStatusColor(item.status);
+function EquipmentCard({ item, warehouseName, config, onCheckout, onCheckin, onTransfer }) {
+  const statusName = useMemo(() => {
+    const found = (config?.statuses || []).find((s) => String(s.id) === String(item?.status_id));
+    return found?.name || item?.status || "Unknown";
+  }, [config, item]);
+  const statusColor = getEquipmentStatusColor(statusName);
   return (
     <Card className="inventory-tag-card">
       <div className="inventory-tag-card-category">EQP</div>
@@ -527,7 +605,7 @@ function EquipmentCard({ item, warehouseName, onCheckout, onCheckin, onTransfer 
       </div>
       <div className="inventory-tag-card-status-row">
         <Badge bg={statusColor === "active" ? "success" : statusColor === "pending" ? "warning" : "secondary"} text={statusColor === "active" ? "white" : "dark"}>
-          {item.status}
+          {statusName}
         </Badge>
         {item.assigned_to && (
           <span className="inventory-tag-card-assignee">
@@ -536,10 +614,10 @@ function EquipmentCard({ item, warehouseName, onCheckout, onCheckin, onTransfer 
         )}
       </div>
       <div className="inventory-tag-card-actions">
-        {item.status === "Available" && (
+        {statusName === "Available" && (
           <Button variant="primary" size="sm" onClick={() => onCheckout(item)}>Check out</Button>
         )}
-        {item.status === "In Use" && (
+        {statusName === "In Use" && (
           <Button variant="success" size="sm" onClick={() => onCheckin(item)}>Check in</Button>
         )}
         <Button variant="outline-secondary" size="sm" onClick={() => onTransfer(item)}>
@@ -571,16 +649,27 @@ function LogTable({ transactions }) {
   );
 }
 
-function WarehouseTable({ warehouses, items }) {
+function WarehouseTable({ warehouses, items, config }) {
+  const categoryMap = useMemo(() => {
+    const map = {};
+    (config?.categories || []).forEach((c) => { map[String(c.id)] = c.name; });
+    return map;
+  }, [config]);
+
+  const resolveCat = useCallback(
+    (item) => categoryMap[String(item?.category_id)] || item?.category || "",
+    [categoryMap],
+  );
+
   const warehouseRows = useMemo(() => {
     return (warehouses || []).map((w) => {
       const itemsAtWh = (items || []).filter((i) => String(i.warehouse_id) === String(w.id));
-      const matCount = itemsAtWh.filter((i) => i.category === "Material").length;
-      const eqCount = itemsAtWh.filter((i) => i.category === "Equipment").length;
-      const low = itemsAtWh.filter((i) => i.category === "Material" && (i.quantity || 0) <= (i.min_threshold || 0)).length;
+      const matCount = itemsAtWh.filter((i) => resolveCat(i) === "Material").length;
+      const eqCount = itemsAtWh.filter((i) => resolveCat(i) === "Equipment").length;
+      const low = itemsAtWh.filter((i) => resolveCat(i) === "Material" && (i.quantity || 0) <= (i.min_threshold || 0)).length;
       return { ...w, matCount, eqCount, low };
     });
-  }, [warehouses, items]);
+  }, [warehouses, items, resolveCat]);
 
   const columns = [
     { key: "name", label: "Name", sortable: true, render: (row) => <span className="fw-semibold">{row.name}</span> },

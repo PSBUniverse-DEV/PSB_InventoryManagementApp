@@ -60,13 +60,16 @@ export async function createItemAction(payload) {
       name: payload?.name || "",
       sku: payload?.sku || "",
       category_id: payload?.categoryId || null,
-      unit: payload?.unit || null,
+      unit_id: payload?.unitId || null,
       quantity: payload?.quantity || 0,
       min_threshold: payload?.minThreshold || 0,
       cost: payload?.cost || 0,
       warehouse_id: payload?.warehouseId || null,
-      status: payload?.status || null,
+      status_id: payload?.statusId || null,
       assigned_to: payload?.assignedTo || null,
+      wholesale_price: payload?.wholesalePrice || null,
+      retail_price: payload?.retailPrice || null,
+      supplier_id: payload?.supplierId || null,
       is_active: true,
     }])
     .select()
@@ -87,8 +90,11 @@ export async function updateItemAction(id, updates) {
   if (updates?.minThreshold !== undefined) patch.min_threshold = updates.minThreshold;
   if (updates?.cost !== undefined) patch.cost = updates.cost;
   if (updates?.warehouseId !== undefined) patch.warehouse_id = updates.warehouseId;
-  if (updates?.status !== undefined) patch.status = updates.status;
+  if (updates?.statusId !== undefined) patch.status_id = updates.statusId;
   if (updates?.assignedTo !== undefined) patch.assigned_to = updates.assignedTo;
+  if (updates?.wholesalePrice !== undefined) patch.wholesale_price = updates.wholesalePrice;
+  if (updates?.retailPrice !== undefined) patch.retail_price = updates.retailPrice;
+  if (updates?.supplierId !== undefined) patch.supplier_id = updates.supplierId;
   patch.updated_at = new Date().toISOString();
 
   const { error } = await supabase
@@ -104,7 +110,7 @@ export async function updateItemAction(id, updates) {
 export async function transferItemAction(item, toWarehouseId, qty) {
   const supabase = getSupabaseAdmin();
 
-  if (item?.category === "Equipment" || !qty) {
+  if (!qty) {
     // Equipment: just reassign warehouse
     await updateItemAction(item.id, { warehouseId: toWarehouseId });
   } else {
@@ -124,7 +130,7 @@ export async function transferItemAction(item, toWarehouseId, qty) {
     } else {
       await createItemAction({
         name: item.name, sku: item.sku, categoryId: item.category_id,
-        unit: item.unit, quantity: qty, minThreshold: item.minThreshold || 0,
+        unitId: item.unit_id, quantity: qty, minThreshold: item.minThreshold || 0,
         cost: item.cost || 0, warehouseId: toWarehouseId,
       });
     }
