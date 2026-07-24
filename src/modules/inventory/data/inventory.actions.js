@@ -59,7 +59,7 @@ export async function createItemAction(payload) {
     .insert([{
       name: payload?.name || "",
       sku: payload?.sku || "",
-      category: payload?.category || "Material",
+      category_id: payload?.categoryId || null,
       unit: payload?.unit || null,
       quantity: payload?.quantity || 0,
       min_threshold: payload?.minThreshold || 0,
@@ -123,7 +123,7 @@ export async function transferItemAction(item, toWarehouseId, qty) {
       await updateItemAction(existing.id, { quantity: (existing.quantity || 0) + qty });
     } else {
       await createItemAction({
-        name: item.name, sku: item.sku, category: item.category,
+        name: item.name, sku: item.sku, categoryId: item.category_id,
         unit: item.unit, quantity: qty, minThreshold: item.minThreshold || 0,
         cost: item.cost || 0, warehouseId: toWarehouseId,
       });

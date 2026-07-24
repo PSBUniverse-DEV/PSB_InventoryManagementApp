@@ -142,13 +142,13 @@ export default function InventoryView({ initialData }) {
   }, [form, runMutation, showToast, closeModal]);
 
   const handleAddItem = useCallback((category) => {
-    if (!form.name || !form.sku || !form.warehouseId) {
-      showToast("Name, SKU, and location required.", "error");
+    if (!form.name || !form.sku || !form.warehouseId || !form.categoryId) {
+      showToast("Name, SKU, category, and location required.", "error");
       return;
     }
     const wh = (data?.warehouses || []).find((w) => String(w.id) === String(form.warehouseId));
     runMutation(
-      () => createItemAction({ ...form, category }),
+      () => createItemAction({ ...form, categoryId: form.categoryId }),
       { type: `${category} added`, itemName: form.name, detail: `SKU ${form.sku}`, warehouseName: wh?.name || "Unknown" },
     );
     closeModal();
@@ -411,6 +411,12 @@ export default function InventoryView({ initialData }) {
       >
         <Field label="Name"><Input value={form.name || ""} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
         <Field label="SKU"><Input value={form.sku || ""} onChange={(e) => setForm({ ...form, sku: e.target.value })} placeholder="e.g. MAT-LUM-206" /></Field>
+        <Field label="Category">
+          <select className="form-select" value={form.categoryId || ""} onChange={(e) => setForm({ ...form, categoryId: e.target.value })}>
+            <option value="">Select category</option>
+            {(data?.config?.categories || []).map((c) => <option key={c.id} value={String(c.id)}>{c.name}</option>)}
+          </select>
+        </Field>
         <Field label="Location">
           <select className="form-select" value={form.warehouseId || ""} onChange={(e) => setForm({ ...form, warehouseId: e.target.value })}>
             <option value="">Select location</option>
