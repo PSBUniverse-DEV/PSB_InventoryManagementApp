@@ -145,7 +145,7 @@ export default function InventoryView({ initialData }) {
   }, [data, filterWh, search]);
 
   const resolveCategory = useCallback(
-    (item) => categoryLookup[String(item?.category_id)] || "",
+    (item) => categoryLookup[String(item?.category_id)] || item?.category || "",
     [categoryLookup],
   );
 
@@ -555,7 +555,8 @@ function MaterialsTable({ materials, warehouseName, config, onRestock, onTransfe
     { key: "category", label: "Category", sortable: true, render: (row) => <span>{catLookup[String(row.category_id)] || "—"}</span> },
     { key: "unit", label: "Unit", sortable: true, align: "center", render: (row) => {
       const u = uLookup[String(row.unit_id)];
-      return u ? <span className="inventory-mono">{u.abbreviation}</span> : <span className="text-muted">—</span>;
+      const text = u ? u.abbreviation : (row.unit || "—");
+      return <span className="inventory-mono">{text}</span>;
     }},
     { key: "location", label: "Location", sortable: true, render: (row) => warehouseName(row.warehouse_id) },
     { key: "quantity", label: "Qty", sortable: true, align: "center", render: (row) => <span className="inventory-mono">{row.quantity}</span> },
