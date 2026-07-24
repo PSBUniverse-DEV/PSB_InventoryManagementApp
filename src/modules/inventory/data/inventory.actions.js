@@ -19,8 +19,8 @@ export async function loadInventoryData() {
   // Operational tables may not exist yet; wrap each call so the page still
   // renders if a table is missing. Returns empty arrays as safe fallbacks.
   const [itemsRes, warehousesRes, transactionsRes] = await Promise.all([
-    safeQuery(() => supabase.from("inv_item").select("*").order("name", { ascending: true })),
-    safeQuery(() => supabase.from("inv_warehouse").select("*").order("name", { ascending: true })),
+    safeQuery(() => supabase.from("inv_s_inventoryitem").select("*").order("name", { ascending: true })),
+    safeQuery(() => supabase.from("inv_s_warehouse").select("*").order("name", { ascending: true })),
     safeQuery(() => supabase.from("inv_transaction").select("*").order("created_at", { ascending: false }).limit(200)),
   ]);
 
@@ -37,7 +37,7 @@ export async function loadInventoryData() {
 export async function createWarehouseAction(payload) {
   const supabase = getSupabaseAdmin();
   const { data, error } = await supabase
-    .from("inv_warehouse")
+    .from("inv_s_warehouse")
     .insert([{
       name: payload?.name || "",
       address: payload?.address || null,
@@ -55,7 +55,7 @@ export async function createWarehouseAction(payload) {
 export async function createItemAction(payload) {
   const supabase = getSupabaseAdmin();
   const { data, error } = await supabase
-    .from("inv_item")
+    .from("inv_s_inventoryitem")
     .insert([{
       name: payload?.name || "",
       sku: payload?.sku || "",
@@ -92,7 +92,7 @@ export async function updateItemAction(id, updates) {
   patch.updated_at = new Date().toISOString();
 
   const { error } = await supabase
-    .from("inv_item")
+    .from("inv_s_inventoryitem")
     .update(patch)
     .eq("item_id", id);
 
@@ -113,7 +113,7 @@ export async function transferItemAction(item, toWarehouseId, qty) {
 
     // Check if same SKU already exists at destination
     const { data: existing } = await supabase
-      .from("inv_item")
+      .from("inv_s_inventoryitem")
       .select("id, quantity")
       .eq("sku", item.sku)
       .eq("warehouse_id", toWarehouseId)
@@ -151,13 +151,13 @@ export async function logTransactionAction(entry) {
 
 export async function deleteItemAction(id) {
   const supabase = getSupabaseAdmin();
-  const { error } = await supabase.from("inv_item").delete().eq("item_id", id);
+  const { error } = await supabase.from("inv_s_inventoryitem").delete().eq("item_id", id);
   if (error) throw new Error(`Failed to delete item: ${error.message}`);
 }
 
 export async function deleteWarehouseAction(id) {
   const supabase = getSupabaseAdmin();
-  const { error } = await supabase.from("inv_warehouse").delete().eq("warehouse_id", id);
+  const { error } = await supabase.from("inv_s_warehouse").delete().eq("warehouse_id", id);
   if (error) throw new Error(`Failed to delete warehouse: ${error.message}`);
 }
 
