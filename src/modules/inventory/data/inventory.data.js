@@ -11,9 +11,11 @@ import { isEntityActive } from "./inventoryHelpers.data";
 
 export const INVENTORY_VIEWS = [
   { id: "dashboard", label: "Dashboard" },
+  { id: "stocklevels", label: "Stock levels" },
   { id: "materials", label: "Materials" },
   { id: "equipment", label: "Equipment" },
-  { id: "warehouses", label: "Locations" },
+  { id: "warehouses", label: "Warehouse" }, 
+  { id: "suppliers", label: "Suppliers" }, 
   { id: "log", label: "Activity log" },
 ];
 

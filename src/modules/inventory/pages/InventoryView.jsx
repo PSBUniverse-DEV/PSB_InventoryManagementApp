@@ -9,9 +9,9 @@
 import "./InventoryView.css";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  Plus, Search,
+  Plus, Search, RefreshCw,
   ArrowRightLeft, AlertTriangle, MapPin, User,
-  PackageCheck, Warehouse,
+  PackageCheck, Warehouse, Pencil, Trash2,
 } from "lucide-react";
 import {
   Button, Card, Input, Modal, Badge, toastError, toastSuccess,
@@ -29,6 +29,13 @@ import {
   updateItemAction,
   transferItemAction,
   logTransactionAction,
+  deleteItemAction,
+  createStockLevelAction,
+  updateStockLevelAction,
+  deleteStockLevelAction,
+  createSupplierAction,
+  updateSupplierAction,
+  deleteSupplierAction,
 } from "../data/inventory.actions";
 import { useRouter } from "next/navigation";
 
@@ -52,7 +59,7 @@ function Field({ label, children }) {
   );
 }
 
-// ─── MAIN VIEW ──────────────────────────────────────────────
+//#region ─── MAIN VIEW ──────────────────────────────────────────────
 
 export default function InventoryView({ initialData }) {
   const router = useRouter();
@@ -81,16 +88,11 @@ export default function InventoryView({ initialData }) {
     [data],
   );
 
-  const categoryLookup = useMemo(() => {
+  const classificationLookup = useMemo(() => {
     const map = {};
     (data?.config?.categories || []).forEach((c) => { map[String(c.id)] = c.name; });
     return map;
   }, [data]);
-
-  const itemCategoryName = useCallback(
-    (item) => categoryLookup[String(item?.category_id)] || "Unknown",
-    [categoryLookup],
-  );
 
   const unitLookup = useMemo(() => {
     const map = {};
@@ -117,11 +119,13 @@ export default function InventoryView({ initialData }) {
     },
     [data],
   );
+  //#endregion
 
-  // ─── Mutation helpers ────────────────────────────────────
+//#region ─── Mutation helpers ────────────────────────────────────
   const runMutation = useCallback(async (fn, txEntry) => {
     if (isBusy) return;
-    setIsBusy(true);
+        setIsBusy(true);
+    
     try {
       await fn();
       if (txEntry) await logTransactionAction(txEntry).catch(() => {});
@@ -134,34 +138,76 @@ export default function InventoryView({ initialData }) {
     }
   }, [isBusy, refresh, showToast]);
 
-  // ─── Filtered items ──────────────────────────────────────
-  const filteredItems = useMemo(() => {
-    if (!data) return [];
-    return (data.items || []).filter((it) => {
-      if (filterWh !== "all" && String(it.warehouse_id) !== filterWh) return false;
-      if (search && !(`${it.name} ${it.sku}`.toLowerCase().includes(search.toLowerCase()))) return false;
-      return true;
-    });
-  }, [data, filterWh, search]);
+  const items = data?.items || [];
 
-  const resolveCategory = useCallback(
-    (item) => categoryLookup[String(item?.category_id)] || item?.category || "",
-    [categoryLookup],
+  const materials = useMemo(
+    () => items.filter((i) => String(i.classification || "").toLowerCase() === "material"),
+    [items],
   );
 
-  const materials = useMemo(() => filteredItems.filter((i) => resolveCategory(i) === "Material"), [filteredItems, resolveCategory]);
-  const equipmentList = useMemo(() => filteredItems.filter((i) => resolveCategory(i) === "Equipment"), [filteredItems, resolveCategory]);
+  const equipmentList = useMemo(
+    () => items.filter((i) => String(i.classification || "").toLowerCase() === "equipment"),
+    [items],
+  );
+
   const lowStock = useMemo(
-    () => (data?.items || []).filter((i) => resolveCategory(i) === "Material" && (i.quantity || 0) <= (i.min_threshold || 0)),
-    [data, resolveCategory],
+    () => items.filter((i) => (i.quantity || 0) <= (i.min_threshold || 0)),
+    [items],
   );
+
   const checkedOut = useMemo(
-    () => (data?.items || []).filter((i) => resolveCategory(i) === "Equipment" && statusLookup[String(i.status_id)] === "In Use").length,
-    [data, resolveCategory, statusLookup],
+    () => items.filter((i) => statusLookup[String(i.status_id)] === "In Use").length,
+    [items, statusLookup],
+  );
+
+  const filteredItems = useMemo(
+    () => filterWh === "all" ? items : items.filter((i) => String(i.warehouse_id) === filterWh),
+    [items, filterWh],
+  );
+
+  const filteredLowStock = useMemo(
+    () => filteredItems.filter((i) => (i.quantity || 0) <= (i.min_threshold || 0)),
+    [filteredItems],
+  );
+
+  const filteredCheckedOut = useMemo(
+    () => filteredItems.filter((i) => statusLookup[String(i.status_id)] === "In Use").length,
+    [filteredItems, statusLookup],
+  );
+
+  const filteredTransactions = useMemo(
+    () => filterWh === "all"
+      ? (data?.transactions || [])
+      : (data?.transactions || []).filter((tx) => {
+          // filter by warehouse_id on the txn row, or by linked item's warehouse_id
+          if (tx.warehouse_id && String(tx.warehouse_id) === filterWh) return true;
+          if (tx.to_warehouse_id && String(tx.to_warehouse_id) === filterWh) return true;
+          const txItem = items.find((it) => String(it.id) === String(tx.item_id));
+          return txItem && String(txItem.warehouse_id) === filterWh;
+        }),
+    [data?.transactions, items, filterWh],
   );
 
   const openModal = useCallback((type, item) => {
-    setForm(item ? { ...item } : {});
+    if (item) {
+      // Normalize snake_case DB fields to camelCase so form inputs pre-populate correctly.
+      setForm({
+        ...item,
+        categoryId: item.categoryId ?? item.category_id,
+        unitId: item.unitId ?? item.unit_id,
+        warehouseId: item.warehouseId ?? item.warehouse_id,
+        minThreshold: item.minThreshold ?? item.min_threshold,
+        wholesalePrice: item.wholesalePrice ?? item.wholesale_price,
+        retailPrice: item.retailPrice ?? item.retail_price,
+        assignedTo: item.assignedTo ?? item.assigned_to,
+        statusId: item.statusId ?? item.status_id,
+        supplierId: item.supplierId ?? item.supplier_id,
+        itemId: item.itemId ?? item.item_id,
+        binLocation: item.binLocation ?? item.bin_location,
+      });
+    } else {
+      setForm({});
+    }
     setModal(type);
   }, []);
 
@@ -170,7 +216,9 @@ export default function InventoryView({ initialData }) {
     setForm({});
   }, []);
 
-  // ─── Handlers ────────────────────────────────────────────
+  //#endregion
+
+//#region ─── Handlers ────────────────────────────────────────────
   const handleAddWarehouse = useCallback(() => {
     if (!form.name || !form.address) {
       showToast("Name and address required.", "error");
@@ -178,7 +226,7 @@ export default function InventoryView({ initialData }) {
     }
     runMutation(
       () => createWarehouseAction(form),
-      { type: "Warehouse added", itemName: form.name, detail: "New location registered", warehouseName: form.name },
+      { type: "Warehouse added", itemName: form.name, detail: "New location registered", warehouseName: form.name, warehouseId: null },
     );
     closeModal();
   }, [form, runMutation, showToast, closeModal]);
@@ -191,7 +239,7 @@ export default function InventoryView({ initialData }) {
     const wh = (data?.warehouses || []).find((w) => String(w.id) === String(form.warehouseId));
     runMutation(
       () => createItemAction({ ...form, categoryId: form.categoryId }),
-      { type: `${category} added`, itemName: form.name, detail: `SKU ${form.sku}`, warehouseName: wh?.name || "Unknown" },
+      { type: `${category} added`, itemId: null, itemName: form.name, sku: form.sku, warehouseId: form.warehouseId, warehouseName: wh?.name || "Unknown", qtyChange: Number(form.quantity) || 0 },
     );
     closeModal();
   }, [form, data, runMutation, showToast, closeModal]);
@@ -205,13 +253,14 @@ export default function InventoryView({ initialData }) {
     const unitAbbrev = unitLookup[String(form.unit_id)] || "pcs";
     runMutation(
       () => updateItemAction(form.id, { quantity: (form.quantity || 0) + qty }),
-      { type: "Restock", itemName: form.name, detail: `+${qty} ${unitAbbrev}`, warehouseName: whName(form.warehouse_id) },
+      { type: "Restock", itemId: form.id, itemName: form.name, sku: form.sku, warehouseId: form.warehouse_id, warehouseName: whName(form.warehouse_id), detail: `+${qty} ${unitAbbrev}`, qtyChange: qty },
     );
     closeModal();
   }, [form, runMutation, showToast, whName, unitLookup, closeModal]);
+  
 
   const handleTransfer = useCallback(() => {
-    const formCatName = categoryLookup[String(form.category_id)] || form.category || "";
+    const formCatName = form?.classification || form.category || "";
     const isEquipment = formCatName === "Equipment";
     const qty = isEquipment ? 0 : Number(form.qty);
     const toWh = form.toWarehouseId;
@@ -226,7 +275,7 @@ export default function InventoryView({ initialData }) {
     const toWhName = (data?.warehouses || []).find((w) => String(w.id) === String(toWh))?.name || "Unknown";
     runMutation(
       () => transferItemAction({ ...form, warehouseId: form.warehouse_id }, toWh, qty),
-      { type: "Transfer", itemName: form.name, detail: `${whName(form.warehouse_id)} -> ${toWhName}`, warehouseName: toWhName },
+      { type: "Transfer", itemId: form.id, itemName: form.name, sku: form.sku, warehouseId: form.warehouse_id, warehouseName: whName(form.warehouse_id), toWarehouseId: Number(toWh), detail: `${whName(form.warehouse_id)} -> ${toWhName}`, qtyChange: -(qty || 0) },
     );
     closeModal();
   }, [form, data, runMutation, showToast, whName, closeModal]);
@@ -238,10 +287,37 @@ export default function InventoryView({ initialData }) {
     }
     runMutation(
       () => updateItemAction(form.id, { statusId: statusIdByName("In Use"), assignedTo: form.assignedTo }),
-      { type: "Check out", itemName: form.name, detail: `To ${form.assignedTo}`, warehouseName: whName(form.warehouse_id) },
+      { type: "Check out", itemId: form.id, itemName: form.name, sku: form.sku, warehouseId: form.warehouse_id, warehouseName: whName(form.warehouse_id), assignedTo: form.assignedTo },
     );
     closeModal();
   }, [form, runMutation, showToast, whName, statusIdByName, closeModal]);
+
+  const handleEditItem = useCallback(() => {
+    if (!form.name || !form.sku || !form.warehouseId || !form.categoryId) {
+      showToast("Name, SKU, category, and location required.", "error");
+      return;
+    }
+    runMutation(
+      () => updateItemAction(form.id, {
+        name: form.name, sku: form.sku, classification: form.classification,
+        categoryId: form.categoryId, warehouseId: form.warehouseId,
+        unitId: form.unitId, quantity: Number(form.quantity) || 0,
+        minThreshold: Number(form.minThreshold) || 0,
+        cost: Number(form.cost) || 0,
+        wholesalePrice: form.wholesalePrice || null,
+        retailPrice: form.retailPrice || null,
+      }),
+      { type: "Edit", itemId: form.id, itemName: form.name, sku: form.sku, warehouseId: form.warehouse_id, warehouseName: whName(form.warehouse_id) },
+    );
+    closeModal();
+  }, [form, runMutation, showToast, whName, closeModal]);
+
+  const handleDeleteItem = useCallback((item) => {
+    runMutation(
+      () => deleteItemAction(item.id),
+      { type: "Delete", itemId: item.id, itemName: item.name, sku: item.sku, warehouseId: item.warehouse_id, warehouseName: whName(item.warehouse_id) },
+    );
+  }, [runMutation, whName]);
 
   const handleCheckin = useCallback((item) => {
     runMutation(
@@ -250,9 +326,78 @@ export default function InventoryView({ initialData }) {
     );
   }, [runMutation, whName, statusIdByName]);
 
+  const handleSaveStockLevel = useCallback(() => {
+    if (!form.itemId || !form.warehouseId) {
+      showToast("Item and warehouse are required.", "error");
+      return;
+    }
+    const payload = {
+      itemId: form.itemId,
+      warehouseId: form.warehouseId,
+      quantity: Number(form.quantity) || 0,
+      binLocation: form.binLocation || null,
+      unitId: form.unitId || null,
+    };
+    if (form.id) {
+      runMutation(
+        () => updateStockLevelAction(form.id, payload),
+        { type: "Stock level updated", itemId: form.itemId, warehouseId: form.warehouseId, detail: `Qty set to ${payload.quantity}` },
+      );
+    } else {
+      runMutation(
+        () => createStockLevelAction(payload),
+        { type: "Stock level added", itemId: form.itemId, warehouseId: form.warehouseId, qtyChange: payload.quantity },
+      );
+    }
+    closeModal();
+  }, [form, runMutation, showToast, closeModal]);
+
+  const handleDeleteStockLevel = useCallback((item) => {
+    runMutation(
+      () => deleteStockLevelAction(item.id),
+      { type: "Stock level deleted", itemId: item.item_id, warehouseId: item.warehouse_id },
+    );
+  }, [runMutation]);
+
+  const handleSaveSupplier = useCallback(() => {
+    if (!form.name) {
+      showToast("Supplier name is required.", "error");
+      return;
+    }
+    const payload = {
+      name: form.name,
+      description: form.description || null,
+      contactPerson: form.contactPerson || null,
+      contactEmail: form.contactEmail || null,
+      contactPhone: form.contactPhone || null,
+      address: form.address || null,
+    };
+    if (form.id) {
+      runMutation(
+        () => updateSupplierAction(form.id, { ...payload, isActive: form.isActive }),
+        { type: "Supplier updated", detail: `Updated "${payload.name}"` },
+      );
+    } else {
+      runMutation(
+        () => createSupplierAction(payload),
+        { type: "Supplier added", detail: `Added "${payload.name}"` },
+      );
+    }
+    closeModal();
+  }, [form, runMutation, showToast, closeModal]);
+
+  const handleDeleteSupplier = useCallback((supplier) => {
+    runMutation(
+      () => deleteSupplierAction(supplier.id),
+      { type: "Supplier deleted", detail: `Deleted "${supplier.name}"` },
+    );
+  }, [runMutation]);
+
   if (!loaded) {
     return <div className="inventory-loading">Loading inventory...</div>;
   }
+
+ //#endregion
 
   return (
     <div className="inventory-module-layout">
@@ -299,17 +444,30 @@ export default function InventoryView({ initialData }) {
                 <h1 className="inventory-page-title">Dashboard</h1>
                 <p className="inventory-page-desc">Live overview across all warehouse locations.</p>
               </div>
+              <div>
+                <select
+                  className="form-select"
+                  value={filterWh}
+                  onChange={(e) => setFilterWh(e.target.value)}
+                  style={{ minWidth: "200px" }}
+                >
+                  <option value="all">All locations</option>
+                  {(data?.warehouses || []).map((w) => (
+                    <option key={w.id} value={String(w.id)}>{w.name}</option>
+                  ))}
+                </select>
+              </div>
             </div>
             <div className="inventory-stat-row">
-              <StatCard label="Total SKUs" value={(data?.items || []).length} />
-              <StatCard label="Low stock alerts" value={lowStock.length} accent={lowStock.length ? "var(--psb-status-suspended)" : "var(--psb-gold)"} />
-              <StatCard label="Equipment checked out" value={checkedOut} />
+              <StatCard label="Total SKUs" value={filteredItems.length} />
+              <StatCard label="Low stock alerts" value={filteredLowStock.length} accent={filteredLowStock.length ? "var(--psb-status-suspended)" : "var(--psb-gold)"} />
+              <StatCard label="Equipment checked out" value={filteredCheckedOut} />
               <StatCard label="Active locations" value={(data?.warehouses || []).length} />
             </div>
             <div className="inventory-dashboard-panels">
               <Card className="inventory-panel" title={<><AlertTriangle size={15} /> Low stock alerts</>}>
-                {lowStock.length === 0 && <p className="inventory-panel-empty">All materials are above their reorder threshold.</p>}
-                {lowStock.map((item) => (
+                {filteredLowStock.length === 0 && <p className="inventory-panel-empty">All materials are above their reorder threshold.</p>}
+                {filteredLowStock.map((item) => (
                   <div key={item.id} className="inventory-panel-row">
                     <div>
                       <div className="fw-semibold">{item.name}</div>
@@ -320,15 +478,20 @@ export default function InventoryView({ initialData }) {
                 ))}
               </Card>
               <Card className="inventory-panel" title="Recent activity">
-                {(data?.transactions || []).slice(0, 6).map((tx) => (
-                  <div key={tx.id} className="inventory-panel-row">
-                    <div>
-                      <div className="d-flex justify-content-between gap-2">
-                        <span className="fw-semibold">{tx.type}</span>
-                        <span className="inventory-panel-row-date">{formatDateTime(tx.created_at)}</span>
-                      </div>
-                      <div className="inventory-panel-row-meta">{tx.item_name} — {tx.detail}</div>
+                {(filteredTransactions || []).slice(0, 6).map((tx) => (
+                  <div key={tx.id} className="inventory-activity-row">
+                    <div className="inventory-activity-main">
+                      <div className="inventory-activity-type">{tx.type || "System"}</div>
+                      <div className="inventory-activity-date">{formatDateTime(tx.created_at)}</div>
                     </div>
+                    <div className="inventory-activity-detail">
+                      <span className="inventory-activity-item">{tx.item_name || "—"}</span>
+                      {tx.detail && <span className="inventory-activity-separator">—</span>}
+                      {tx.detail && <span className="inventory-activity-action">{tx.detail}</span>}
+                    </div>
+                    {tx.warehouse_name && (
+                      <div className="inventory-activity-location">{tx.warehouse_name}</div>
+                    )}
                   </div>
                 ))}
               </Card>
@@ -342,33 +505,26 @@ export default function InventoryView({ initialData }) {
               <h1 className="inventory-page-title" style={{ margin: 0 }}>
                 {view === "materials" ? "Materials" : "Equipment"}
               </h1>
-              <Button
-                variant="success"
-                size="sm"
-                onClick={() => openModal(view === "materials" ? "addMaterial" : "addEquipment")}
-                disabled={isBusy}
-              >
-                <Plus size={14} /> Add {view === "materials" ? "material" : "equipment"}
-              </Button>
-            </div>
-            <div className="inventory-filter-row">
-              <div className="inventory-search-wrap">
-                <Search size={15} className="inventory-search-icon" />
-                <Input
-                  placeholder="Search by name or SKU"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  className="inventory-search-input"
-                />
+              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={refresh}
+                  disabled={isBusy}
+                >
+                  Refresh
+                </Button>
+                <Button
+                  type="button"
+                  variant="success"
+                  size="sm"
+                  onClick={() => openModal(view === "materials" ? "addMaterial" : "addEquipment")}
+                  disabled={isBusy}
+                >
+                  <Plus size={14} /> Add {view === "materials" ? "material" : "equipment"}
+                </Button>
               </div>
-              <select
-                value={filterWh}
-                onChange={(e) => setFilterWh(e.target.value)}
-                className="form-select inventory-filter-select"
-              >
-                <option value="all">All locations</option>
-                {(data?.warehouses || []).map((w) => <option key={w.id} value={String(w.id)}>{w.name}</option>)}
-              </select>
             </div>
 
             {view === "materials" && (
@@ -376,6 +532,7 @@ export default function InventoryView({ initialData }) {
                 materials={materials}
                 warehouseName={whName}
                 config={data?.config}
+                onEdit={(item) => openModal("editItem", item)}
                 onRestock={(item) => openModal("restock", item)}
                 onTransfer={(item) => openModal("transfer", item)}
               />
@@ -392,9 +549,11 @@ export default function InventoryView({ initialData }) {
                     onCheckout={(it) => openModal("checkout", it)}
                     onCheckin={handleCheckin}
                     onTransfer={(it) => openModal("transfer", it)}
+                    onEdit={(it) => openModal("editItem", it)}
+                    onDelete={(it) => handleDeleteItem(it)}
                   />
                 ))}
-                {equipmentList.length === 0 && <p className="text-muted">No equipment matches this view.</p>}
+                {equipmentList.length === 0 && <p className="text-muted">No equipment found.</p>}
               </div>
             )}
           </div>
@@ -416,6 +575,58 @@ export default function InventoryView({ initialData }) {
           </div>
         )}
 
+        {view === "stocklevels" && (
+          <div>
+            <div className="inventory-view-header">
+              <h1 className="inventory-page-title" style={{ margin: 0 }}>Stock levels</h1>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={refresh}
+                  disabled={isBusy}
+                >
+                  Refresh
+                </Button>
+                <Button
+                  type="button"
+                  variant="success"
+                  size="sm"
+                  onClick={() => openModal("addStockLevel")}
+                  disabled={isBusy}
+                >
+                  <Plus size={14} /> Add stock
+                </Button>
+              </div>
+            </div>
+            <StockLevelsTable
+              stockLevels={data?.stockLevels || []}
+              items={data?.items || []}
+              warehouses={data?.warehouses || []}
+              config={data?.config}
+              onEdit={(item) => openModal("editStockLevel", item)}
+              onDelete={(item) => handleDeleteStockLevel(item)}
+            />
+          </div>
+        )}
+
+        {view === "suppliers" && (
+          <div>
+            <div className="inventory-view-header">
+              <h1 className="inventory-page-title" style={{ margin: 0 }}>Suppliers</h1>
+              <Button variant="success" size="sm" onClick={() => openModal("addSupplier")} disabled={isBusy}>
+                <Plus size={14} /> Add supplier
+              </Button>
+            </div>
+            <SuppliersTable
+              suppliers={data?.suppliers || []}
+              onEdit={(s) => openModal("editSupplier", s)}
+              onDelete={(s) => handleDeleteSupplier(s)}
+            />
+          </div>
+        )}
+
         {view === "log" && (
           <div>
             <h1 className="inventory-page-title">Activity log</h1>
@@ -425,6 +636,8 @@ export default function InventoryView({ initialData }) {
       </main>
 
       {/* Modals */}
+   
+      
       <Modal show={modal === "addWarehouse"} onHide={closeModal} title="Add location" footer={
         <>
           <Button variant="ghost" size="sm" onClick={closeModal} disabled={isBusy}>Cancel</Button>
@@ -444,8 +657,10 @@ export default function InventoryView({ initialData }) {
           <Input value={form.manager || ""} onChange={(e) => setForm({ ...form, manager: e.target.value })} placeholder="Name" />
         </Field>
       </Modal>
+      
 
       <Modal show={modal === "addMaterial" || modal === "addEquipment"} onHide={closeModal}
+        bodyClassName="inventory-modal-scrollable"
         title={modal === "addMaterial" ? "Add material" : "Add equipment"}
         footer={
           <>
@@ -458,6 +673,9 @@ export default function InventoryView({ initialData }) {
       >
         <Field label="Name"><Input value={form.name || ""} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
         <Field label="SKU"><Input value={form.sku || ""} onChange={(e) => setForm({ ...form, sku: e.target.value })} placeholder="e.g. MAT-LUM-206" /></Field>
+        <Field label="Classification">
+          <Input value={form.classification || ""} onChange={(e) => setForm({ ...form, classification: e.target.value })} placeholder="e.g. Material, Equipment, Office Supply" />
+        </Field>
         <Field label="Category">
           <select className="form-select" value={form.categoryId || ""} onChange={(e) => setForm({ ...form, categoryId: e.target.value })}>
             <option value="">Select category</option>
@@ -512,11 +730,47 @@ export default function InventoryView({ initialData }) {
             {(data?.warehouses || []).filter((w) => String(w.id) !== String(form.warehouse_id)).map((w) => <option key={w.id} value={String(w.id)}>{w.name}</option>)}
           </select>
         </Field>
-        {categoryLookup[String(form.category_id)] !== "Equipment" && (
+        {(form.classification || form.category || "") !== "Equipment" && (
           <Field label={`Quantity to transfer (max ${form.quantity} ${unitLookup[String(form.unit_id)] || "pcs"})`}>
             <Input type="number" value={form.qty || ""} onChange={(e) => setForm({ ...form, qty: e.target.value })} />
           </Field>
         )}
+      </Modal>
+
+      <Modal show={modal === "editItem"} onHide={closeModal} bodyClassName="inventory-modal-scrollable" title={`Edit: ${form.name}`} footer={
+        <>
+          <Button variant="ghost" size="sm" onClick={closeModal} disabled={isBusy}>Cancel</Button>
+          <Button variant="success" size="sm" onClick={handleEditItem} loading={isBusy}>Save changes</Button>
+        </>
+      }>
+        <Field label="Name"><Input value={form.name || ""} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
+        <Field label="SKU"><Input value={form.sku || ""} onChange={(e) => setForm({ ...form, sku: e.target.value })} placeholder="e.g. MAT-LUM-206" /></Field>
+        <Field label="Classification">
+          <Input value={form.classification || ""} onChange={(e) => setForm({ ...form, classification: e.target.value })} placeholder="e.g. Material, Equipment, Office Supply" />
+        </Field>
+        <Field label="Category">
+          <select className="form-select" value={form.categoryId || ""} onChange={(e) => setForm({ ...form, categoryId: e.target.value })}>
+            <option value="">Select category</option>
+            {(data?.config?.categories || []).map((c) => <option key={c.id} value={String(c.id)}>{c.name}</option>)}
+          </select>
+        </Field>
+        <Field label="Location">
+          <select className="form-select" value={form.warehouseId || ""} onChange={(e) => setForm({ ...form, warehouseId: e.target.value })}>
+            <option value="">Select location</option>
+            {(data?.warehouses || []).map((w) => <option key={w.id} value={String(w.id)}>{w.name}</option>)}
+          </select>
+        </Field>
+        <Field label="Unit">
+          <select className="form-select" value={form.unitId || ""} onChange={(e) => setForm({ ...form, unitId: e.target.value })}>
+            <option value="">Select unit</option>
+            {(data?.config?.units || []).map((u) => <option key={u.id} value={String(u.id)}>{u.name} ({u.abbreviation})</option>)}
+          </select>
+        </Field>
+        <Field label="Quantity"><Input type="number" value={form.quantity || ""} onChange={(e) => setForm({ ...form, quantity: e.target.value })} /></Field>
+        <Field label="Reorder threshold"><Input type="number" value={form.minThreshold || ""} onChange={(e) => setForm({ ...form, minThreshold: e.target.value })} /></Field>
+        <Field label="Unit cost ($)"><Input type="number" value={form.cost || ""} onChange={(e) => setForm({ ...form, cost: e.target.value })} /></Field>
+        <Field label="Wholesale price ($)"><Input type="number" value={form.wholesalePrice || ""} onChange={(e) => setForm({ ...form, wholesalePrice: e.target.value })} /></Field>
+        <Field label="Retail price ($)"><Input type="number" value={form.retailPrice || ""} onChange={(e) => setForm({ ...form, retailPrice: e.target.value })} /></Field>
       </Modal>
 
       <Modal show={modal === "checkout"} onHide={closeModal} title={`Check out: ${form.name}`} footer={
@@ -530,13 +784,105 @@ export default function InventoryView({ initialData }) {
           <Input value={form.assignedTo || ""} onChange={(e) => setForm({ ...form, assignedTo: e.target.value })} placeholder="Crew member or supervisor name" />
         </Field>
       </Modal>
+
+      <Modal show={modal === "addStockLevel" || modal === "editStockLevel"} onHide={closeModal}
+        title={modal === "editStockLevel" ? "Edit stock level" : "Add stock level"}
+        footer={
+          <>
+            <Button variant="ghost" size="sm" onClick={closeModal} disabled={isBusy}>Cancel</Button>
+            <Button variant="success" size="sm" onClick={handleSaveStockLevel} loading={isBusy}>
+              {modal === "editStockLevel" ? "Save changes" : "Add stock"}
+            </Button>
+          </>
+        }
+      >
+        <Field label="Item">
+          <select className="form-select" value={form.itemId || ""} onChange={(e) => setForm({ ...form, itemId: e.target.value })}>
+            <option value="">Select item</option>
+            {(data?.items || []).map((i) => (
+              <option key={i.id} value={String(i.id)}>{i.name} ({i.sku})</option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Warehouse">
+          <select className="form-select" value={form.warehouseId || ""} onChange={(e) => setForm({ ...form, warehouseId: e.target.value })}>
+            <option value="">Select warehouse</option>
+            {(data?.warehouses || []).map((w) => (
+              <option key={w.id} value={String(w.id)}>{w.name}</option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Bin location">
+          <Input value={form.binLocation || ""} onChange={(e) => setForm({ ...form, binLocation: e.target.value })} placeholder="e.g. A-12-3" />
+        </Field>
+        <Field label="Quantity">
+          <Input type="number" value={form.quantity || ""} onChange={(e) => setForm({ ...form, quantity: e.target.value })} />
+        </Field>
+        <Field label="OuM">
+          <select className="form-select" value={form.unitId || ""} onChange={(e) => setForm({ ...form, unitId: e.target.value })}>
+            <option value="">Select unit</option>
+            {(data?.config?.units || []).map((u) => (
+              <option key={u.id} value={String(u.id)}>{u.name} ({u.abbreviation})</option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Supplier/Vendor">
+          <select className="form-select" value={form.supplierId || ""} onChange={(e) => setForm({ ...form, supplierId: e.target.value })}>
+            <option value="">Select supplier</option>
+            {(data?.suppliers || []).map((s) => (
+              <option key={s.id} value={String(s.id)}>{s.name}</option>
+            ))}
+          </select>
+        </Field>
+      </Modal>
+
+      <Modal show={modal === "addSupplier" || modal === "editSupplier"} onHide={closeModal}
+        title={modal === "editSupplier" ? "Edit supplier" : "Add supplier"}
+        footer={
+          <>
+            <Button variant="ghost" size="sm" onClick={closeModal} disabled={isBusy}>Cancel</Button>
+            <Button variant="success" size="sm" onClick={handleSaveSupplier} loading={isBusy}>
+              {modal === "editSupplier" ? "Save changes" : "Add supplier"}
+            </Button>
+          </>
+        }
+      >
+        <Field label="Supplier name">
+          <Input value={form.name || ""} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="e.g. Acme Building Supply" />
+        </Field>
+        <Field label="Contact person">
+          <Input value={form.contactPerson || ""} onChange={(e) => setForm({ ...form, contactPerson: e.target.value })} placeholder="Name" />
+        </Field>
+        <Field label="Email">
+          <Input type="email" value={form.contactEmail || ""} onChange={(e) => setForm({ ...form, contactEmail: e.target.value })} placeholder="supplier@example.com" />
+        </Field>
+        <Field label="Phone">
+          <Input value={form.contactPhone || ""} onChange={(e) => setForm({ ...form, contactPhone: e.target.value })} placeholder="(555) 123-4567" />
+        </Field>
+        <Field label="Address">
+          <Input value={form.address || ""} onChange={(e) => setForm({ ...form, address: e.target.value })} placeholder="Street address" />
+        </Field>
+        <Field label="Description">
+          <Input value={form.description || ""} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Notes about this supplier" />
+        </Field>
+        {modal === "editSupplier" && (
+          <Field label="Active">
+            <select className="form-select" value={String(form.isActive !== false)} onChange={(e) => setForm({ ...form, isActive: e.target.value === "true" })}>
+              <option value="true">Active</option>
+              <option value="false">Inactive</option>
+            </select>
+          </Field>
+        )}
+      </Modal>
     </div>
   );
 }
 
+//#endregion
+
 //#region ─── SUB-COMPONENTS ─────────────────────────────────────────
 
-function MaterialsTable({ materials, warehouseName, config, onRestock, onTransfer }) {
+function MaterialsTable({ materials, warehouseName, config, onRestock, onTransfer, onEdit }) {
   const catLookup = useMemo(() => {
     const map = {};
     (config?.categories || []).forEach((c) => { map[String(c.id)] = c.name; });
@@ -552,13 +898,13 @@ function MaterialsTable({ materials, warehouseName, config, onRestock, onTransfe
   const columns = [
     { key: "name", label: "Name", sortable: true, render: (row) => <span className="fw-semibold">{row.name}</span> },
     { key: "sku", label: "SKU", sortable: true, render: (row) => <span className="inventory-mono text-muted">{row.sku}</span> },
-    { key: "category", label: "Category", sortable: true, render: (row) => <span>{catLookup[String(row.category_id)] || "—"}</span> },
-    { key: "unit", label: "Unit", sortable: true, align: "center", render: (row) => {
+    { key: "classification", label: "Classification", sortable: true, render: (row) => <span>{row.classification || "—"}</span> },
+    { key: "unit", label: "UoM", sortable: true, align: "center", render: (row) => {
       const u = uLookup[String(row.unit_id)];
       const text = u ? u.abbreviation : (row.unit || "—");
       return <span className="inventory-mono">{text}</span>;
     }},
-    { key: "location", label: "Location", sortable: true, render: (row) => warehouseName(row.warehouse_id) },
+    // { key: "location", label: "Location", sortable: true, render: (row) => warehouseName(row.warehouse_id) },
     { key: "quantity", label: "Qty", sortable: true, align: "center", render: (row) => <span className="inventory-mono">{row.quantity}</span> },
     { key: "minThreshold", label: "Reorder At", sortable: true, align: "center", render: (row) => <span className="inventory-mono text-muted">{row.min_threshold}</span> },
     { key: "cost", label: "Cost ($)", sortable: true, align: "right", render: (row) => row.cost ? <span className="inventory-mono">${Number(row.cost).toFixed(2)}</span> : <span className="text-muted">—</span> },
@@ -573,6 +919,7 @@ function MaterialsTable({ materials, warehouseName, config, onRestock, onTransfe
   ];
 
   const actions = [
+    { key: "edit", label: "Edit", type: "secondary", icon: "edit", onClick: (r) => onEdit(r) },
     { key: "restock", label: "Restock", type: "secondary", icon: "plus", onClick: (r) => onRestock(r) },
     { key: "transfer", label: "Transfer", type: "secondary", icon: "right-to-bracket", onClick: (r) => onTransfer(r) },
   ];
@@ -583,17 +930,16 @@ function MaterialsTable({ materials, warehouseName, config, onRestock, onTransfe
       columns={columns}
       actions={actions}
       rowIdKey="id"
-      hideSearch
-      hideFooter
+      searchPlaceholder="Search materials..."
       emptyMessage="No materials match this view."
     />
   );
 }
 
-function EquipmentCard({ item, warehouseName, config, onCheckout, onCheckin, onTransfer }) {
+function EquipmentCard({ item, warehouseName, config, onCheckout, onCheckin, onTransfer, onEdit, onDelete }) {
   const statusName = useMemo(() => {
     const found = (config?.statuses || []).find((s) => String(s.id) === String(item?.status_id));
-    return found?.name || item?.status || "Unknown";
+    return found?.name || item?.status || "Available";
   }, [config, item]);
   const statusColor = getEquipmentStatusColor(statusName);
   return (
@@ -621,8 +967,14 @@ function EquipmentCard({ item, warehouseName, config, onCheckout, onCheckin, onT
         {statusName === "In Use" && (
           <Button variant="success" size="sm" onClick={() => onCheckin(item)}>Check in</Button>
         )}
-        <Button variant="outline-secondary" size="sm" onClick={() => onTransfer(item)}>
+        <Button variant="outline-secondary" size="sm" onClick={() => onTransfer(item)} title="Transfer">
           <ArrowRightLeft size={13} />
+        </Button>
+        <Button variant="outline-secondary" size="sm" onClick={() => onEdit(item)} title="Edit">
+          <Pencil size={13} />
+        </Button>
+        <Button variant="outline-secondary" size="sm" onClick={() => onDelete(item)} title="Delete">
+          <Trash2 size={13} />
         </Button>
       </div>
     </Card>
@@ -650,6 +1002,72 @@ function LogTable({ transactions }) {
   );
 }
 
+function StockLevelsTable({ stockLevels, items, warehouses, config, onEdit, onDelete }) {
+  const itemLookup = useMemo(() => {
+    const map = {};
+    (items || []).forEach((i) => { map[String(i.id)] = i; });
+    return map;
+  }, [items]);
+
+  const whLookup = useMemo(() => {
+    const map = {};
+    (warehouses || []).forEach((w) => { map[String(w.id)] = w; });
+    return map;
+  }, [warehouses]);
+
+  const uLookup = useMemo(() => {
+    const map = {};
+    (config?.units || []).forEach((u) => { map[String(u.id)] = u; });
+    return map;
+  }, [config]);
+
+  const columns = [
+    {
+      key: "item", label: "Item", sortable: true,
+      render: (row) => {
+        const item = itemLookup[String(row.item_id)];
+        return (
+          <div>
+            <div className="fw-semibold">{item?.name || "Unknown"}</div>
+            <div className="inventory-mono text-muted small">{item?.sku || "—"}</div>
+          </div>
+        );
+      },
+    },
+    { key: "warehouse", label: "Warehouse", sortable: true, render: (row) => whLookup[String(row.warehouse_id)]?.name || "Unknown" },
+    { key: "bin", label: "Bin", sortable: true, render: (row) => row.bin_location || "—" },
+    { key: "quantity", label: "Qty", sortable: true, align: "center", render: (row) => <span className="inventory-mono">{row.quantity}</span> },
+    { key: "unit", label: "Unit", sortable: true, align: "center", render: (row) => {
+      const u = uLookup[String(row.unit_id)];
+      return <span className="inventory-mono">{u ? u.abbreviation : "pcs"}</span>;
+    }},
+  ];
+
+  const actions = [
+    { key: "edit", label: "Edit", type: "secondary", icon: "edit", onClick: (r) => onEdit(r) },
+    {
+      key: "delete",
+      label: "Delete",
+      type: "danger",
+      icon: "trash",
+      confirm: true,
+      confirmMessage: (row) => `Delete stock for "${itemLookup[String(row.item_id)]?.name || "this item"}" at ${whLookup[String(row.warehouse_id)]?.name || "this warehouse"}?`,
+      onClick: (r) => onDelete(r),
+    },
+  ];
+
+  return (
+    <TableZ
+      data={stockLevels}
+      columns={columns}
+      actions={actions}
+      rowIdKey="id"
+      searchPlaceholder="Search stock levels..."
+      emptyMessage="No stock levels found."
+    />
+  );
+}
+
 function WarehouseTable({ warehouses, items, config }) {
   const categoryMap = useMemo(() => {
     const map = {};
@@ -658,16 +1076,16 @@ function WarehouseTable({ warehouses, items, config }) {
   }, [config]);
 
   const resolveCat = useCallback(
-    (item) => categoryMap[String(item?.category_id)] || item?.category || "",
+    (item) => String(item?.classification || categoryMap[String(item?.category_id)] || "").toLowerCase(),
     [categoryMap],
   );
 
   const warehouseRows = useMemo(() => {
     return (warehouses || []).map((w) => {
       const itemsAtWh = (items || []).filter((i) => String(i.warehouse_id) === String(w.id));
-      const matCount = itemsAtWh.filter((i) => resolveCat(i) === "Material").length;
-      const eqCount = itemsAtWh.filter((i) => resolveCat(i) === "Equipment").length;
-      const low = itemsAtWh.filter((i) => resolveCat(i) === "Material" && (i.quantity || 0) <= (i.min_threshold || 0)).length;
+      const matCount = itemsAtWh.filter((i) => resolveCat(i) === "material").length;
+      const eqCount = itemsAtWh.filter((i) => resolveCat(i) === "equipment").length;
+      const low = itemsAtWh.filter((i) => resolveCat(i) === "material" && (i.quantity || 0) <= (i.min_threshold || 0)).length;
       return { ...w, matCount, eqCount, low };
     });
   }, [warehouses, items, resolveCat]);
@@ -691,6 +1109,47 @@ function WarehouseTable({ warehouses, items, config }) {
       rowIdKey="id"
       hideFooter
       emptyMessage="No warehouses found."
+    />
+  );
+}
+
+
+function SuppliersTable({ suppliers, onEdit, onDelete }) {
+  const columns = [
+    { key: "name", label: "Supplier", sortable: true, render: (row) => <span className="fw-semibold">{row.name}</span> },
+    { key: "contactPerson", label: "Contact", sortable: true, render: (row) => <span>{row.contact_person || "—"}</span> },
+    { key: "contactEmail", label: "Email", sortable: true, render: (row) => row.contact_email ? <span className="inventory-mono small">{row.contact_email}</span> : <span className="text-muted">—</span> },
+    { key: "contactPhone", label: "Phone", sortable: true, render: (row) => row.contact_phone ? <span className="inventory-mono small">{row.contact_phone}</span> : <span className="text-muted">—</span> },
+    { key: "address", label: "Address", sortable: true, render: (row) => <span className="text-muted">{row.address || "—"}</span> },
+    {
+      key: "isActive", label: "Active", sortable: true, align: "center",
+      render: (row) => row.is_active !== false
+        ? <Badge bg="success" text="white">Active</Badge>
+        : <Badge bg="secondary" text="dark">Inactive</Badge>,
+    },
+  ];
+
+  const actions = [
+    { key: "edit", label: "Edit", type: "secondary", icon: "edit", onClick: (r) => onEdit(r) },
+    {
+      key: "delete",
+      label: "Delete",
+      type: "danger",
+      icon: "trash",
+      confirm: true,
+      confirmMessage: (row) => `Delete supplier "${row.name}"?`,
+      onClick: (r) => onDelete(r),
+    },
+  ];
+
+  return (
+    <TableZ
+      data={suppliers}
+      columns={columns}
+      actions={actions}
+      rowIdKey="id"
+      searchPlaceholder="Search suppliers..."
+      emptyMessage="No suppliers found."
     />
   );
 }
