@@ -20,38 +20,44 @@
   font-family: var(--psb-sans);
 }
 
-/* ─── Mobile navigation (default: visible) ─── */
+/* ─── Drawer overlay (mobile only) ─── */
 
-.inventory-mobile-nav {
-  margin-bottom: 1rem;
+.inventory-drawer-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  z-index: 999;
 }
 
-.inventory-mobile-nav .form-select {
-  border-radius: 0.55rem;
-  border-color: var(--psb-border);
-  color: var(--psb-text);
-  font-weight: 600;
-  font-size: 0.9rem;
+.inventory-drawer-overlay.is-open {
+  display: block;
 }
 
-/* ─── Sidebar (default: hidden on mobile) ─── */
+/* ─── Drawer sidebar ─── */
 
 .inventory-sidebar {
-  display: none;
+  position: fixed;
+  left: 0;
+  top: 53px;
+  bottom: 0;
+  z-index: 1000;
+  display: flex;
   flex-direction: column;
   width: 220px;
   flex-shrink: 0;
   background: var(--psb-brand);
   color: #fff;
   padding: 1.25rem 1rem;
-  margin: 0.6rem 0 0.6rem 0.6rem;
-  border-radius: 0.75rem;
+  margin: 0;
+  border-radius: 0;
+  overflow: hidden;
+  transform: translateX(-100%);
+  transition: transform 250ms ease;
 }
 
-.inventory-sidebar-brand {
-  padding: 0.6rem 0.6rem 0.9rem;
-  margin-bottom: 1.25rem;
-  border-bottom: 1px solid #333d48;
+.inventory-sidebar.is-open {
+  transform: translateX(0);
 }
 
 .inventory-sidebar-title {
@@ -96,6 +102,8 @@
   font-size: 0.85rem;
   font-weight: 500;
   text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
   transition: background 0.15s ease, color 0.15s ease;
 }
 
@@ -105,12 +113,94 @@
   color: var(--psb-gold);
 }
 
+.inventory-sidebar-nav-icon {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+}
+
+.inventory-sidebar-nav-label {
+  opacity: 0;
+  transition: opacity 150ms ease;
+}
+
+.inventory-sidebar.is-open .inventory-sidebar-nav-label {
+  opacity: 1;
+}
+
+/* Brand area — always visible (contains toggle) */
+.inventory-sidebar-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 1.25rem;
+}
+
+.inventory-sidebar-brand-text {
+  overflow: hidden;
+  max-width: 0;
+  opacity: 0;
+  transition: max-width 250ms ease, opacity 150ms ease;
+}
+
+.inventory-sidebar.is-open .inventory-sidebar-brand {
+  padding: 0.6rem 0.6rem 0.9rem;
+  border-bottom: 1px solid #333d48;
+}
+
+.inventory-sidebar.is-open .inventory-sidebar-brand-text {
+  max-width: 200px;
+  opacity: 1;
+}
+
 .inventory-sidebar-footer {
+  opacity: 0;
   margin-top: auto;
   font-size: 0.7rem;
   color: #5f6b78;
   padding-top: 1rem;
   border-top: 1px solid #333d48;
+  overflow: hidden;
+  transition: opacity 150ms ease;
+}
+
+.inventory-sidebar.is-open .inventory-sidebar-footer {
+  opacity: 1;
+}
+
+/* ─── Drawer toggle button ─── */
+
+.inventory-drawer-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  /* padding: 0.35rem; */
+  /* margin-bottom: 0.75rem; */
+  background: var(--psb-brand);
+  color: #fff;
+  border: none;
+  border-radius: 0.35rem;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s ease;
+}
+
+.inventory-drawer-toggle:hover {
+  background: #2a3541;
+}
+
+/* Mobile hamburger — positioned in main content, visible only below desktop */
+.inventory-drawer-toggle-mobile {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.3rem 0.4rem;
+  margin-bottom: 0.75rem;
+  background: var(--psb-brand);
+  color: #fff;
+  border: none;
+  border-radius: 0.35rem;
+  cursor: pointer;
 }
 
 /* ─── Main content ─── */
@@ -122,6 +212,8 @@
   padding: 1rem;
   overflow-y: auto;
   box-sizing: border-box;
+  transition: margin-left 250ms ease;
+  margin-left: 0;
 }
 
 .inventory-page-title {
@@ -520,12 +612,39 @@
 /* ─── DESKTOP (>= 992px) ─── */
 
 @media (min-width: 992px) {
-  .inventory-sidebar {
-    display: flex;
+  /* Hide overlay — drawer doesn't overlay content on desktop */
+  .inventory-drawer-overlay {
+    display: none;
   }
 
-  .inventory-mobile-nav {
+  .inventory-drawer-overlay.is-open {
     display: none;
+  }
+
+  /* Sidebar always visible as icon strip (mobile-first: hidden, desktop: visible strip) */
+  .inventory-sidebar {
+    transform: none;
+    width: 56px;
+    padding: 1rem 0.5rem;
+  }
+
+  .inventory-sidebar.is-open {
+    width: 220px;
+    padding: 1.25rem 1rem;
+  }
+
+  .inventory-main {
+    margin-left: 56px;
+  }
+
+  /* Hide mobile hamburger on desktop */
+  .inventory-drawer-toggle-mobile {
+    display: none;
+  }
+
+  /* When drawer is open on desktop, push main content */
+  .inventory-sidebar.is-open ~ .inventory-main {
+    margin-left: 220px;
   }
 
   .inventory-stat-row {

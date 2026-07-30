@@ -11,7 +11,9 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Plus, Search, RefreshCw,
   ArrowRightLeft, AlertTriangle, MapPin, User,
-  PackageCheck, Warehouse, Pencil, Trash2,
+  PackageCheck, Warehouse, Pencil, Trash2, Menu,
+  LayoutDashboard, BarChart3, Package, Wrench,
+  Truck, ClipboardList, Columns, Settings,
 } from "lucide-react";
 import {
   Button, Card, Input, Modal, Badge, toastError, toastSuccess,
@@ -65,6 +67,7 @@ export default function InventoryView({ initialData }) {
   const router = useRouter();
   const data = initialData;
   const [loaded, setLoaded] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const [view, setView] = useState("dashboard");
   const [search, setSearch] = useState("");
   const [filterWh, setFilterWh] = useState("all");
@@ -73,6 +76,16 @@ export default function InventoryView({ initialData }) {
   const [form, setForm] = useState({});
 
   useEffect(() => { setLoaded(true); }, []);
+
+  // Auto-open drawer on desktop; close on mobile; respond to resize
+  useEffect(() => {
+    const checkWidth = () => {
+      setDrawerOpen(window.innerWidth >= 992);
+    };
+    checkWidth();
+    window.addEventListener("resize", checkWidth);
+    return () => window.removeEventListener("resize", checkWidth);
+  }, []);
 
   const refresh = useCallback(() => {
     router.refresh();
@@ -215,6 +228,18 @@ export default function InventoryView({ initialData }) {
     setModal(null);
     setForm({});
   }, []);
+
+  const handleNavClick = useCallback((viewId) => {
+    if (viewId === "boards") {
+      router.push("/inventory/board");
+      return;
+    }
+    if (viewId === "boardSetup") {
+      router.push("/inventory/board/manage");
+      return;
+    }
+    setView(viewId);
+  }, [router]);
 
   //#endregion
 
@@ -401,42 +426,62 @@ export default function InventoryView({ initialData }) {
 
   return (
     <div className="inventory-module-layout">
-      {/* Sidebar — hidden on small screens */}
-      <aside className="inventory-sidebar">
+      {/* Drawer overlay (mobile only) */}
+      <div
+        className={`inventory-drawer-overlay${drawerOpen ? " is-open" : ""}`}
+        onClick={() => setDrawerOpen(false)}
+        aria-hidden="true"
+      />
+
+      {/* Drawer sidebar */}
+      <aside className={`inventory-sidebar${drawerOpen ? " is-open" : ""}`}>
         <div className="inventory-sidebar-brand">
-          <div className="inventory-sidebar-title">PSB IMS</div>
-          <div className="inventory-sidebar-subtitle">Materials Tracker</div>
+          <button
+            className="inventory-drawer-toggle"
+            onClick={() => setDrawerOpen((prev) => !prev)}
+            aria-label={drawerOpen ? "Close navigation" : "Open navigation"}
+          >
+            <Menu size={18} />
+          </button>
+          <div className="inventory-sidebar-brand-text">
+            <div className="inventory-sidebar-title">PSB IMS</div>
+            {/* <div className="inventory-sidebar-subtitle">Materials Tracker</div> */}
+          </div>
         </div>
         <nav className="inventory-sidebar-nav">
-          {INVENTORY_VIEWS.map((n) => (
-            <button
-              key={n.id}
-              onClick={() => setView(n.id)}
-              className={`inventory-sidebar-nav-item${view === n.id ? " is-active" : ""}`}
-            >
-              {n.label}
-            </button>
-          ))}
+          {INVENTORY_VIEWS.map((n) => {
+            const iconMap = {
+              LayoutDashboard, BarChart3, Package, Wrench,
+              Warehouse, Truck, ClipboardList, Columns, Settings,
+            };
+            const IconComponent = iconMap[n.icon];
+            return (
+              <button
+                key={n.id}
+                onClick={() => handleNavClick(n.id)}
+                className={`inventory-sidebar-nav-item${view === n.id ? " is-active" : ""}`}
+                title={n.label}
+              >
+                {IconComponent && <IconComponent size={18} className="inventory-sidebar-nav-icon" />}
+                <span className="inventory-sidebar-nav-label">{n.label}</span>
+              </button>
+            );
+          })}
         </nav>
-        <div className="inventory-sidebar-footer">
+        {/* <div className="inventory-sidebar-footer">
           Data sourced from Supabase. Changes sync immediately.
-        </div>
+        </div> */}
       </aside>
 
       {/* Main content */}
       <main className="inventory-main">
-        {/* Mobile nav */}
-        <div className="inventory-mobile-nav">
-          <select
-            className="form-select"
-            value={view}
-            onChange={(e) => setView(e.target.value)}
-            aria-label="Switch view"
-          >
-            {INVENTORY_VIEWS.map((n) => <option key={n.id} value={n.id}>{n.label}</option>)}
-          </select>
-        </div>
-
+        <button
+          className="inventory-drawer-toggle-mobile"
+          onClick={() => setDrawerOpen(true)}
+          aria-label="Open navigation"
+        >
+          <Menu size={20} />
+        </button>
         {view === "dashboard" && (
           <div>
             <div className="inventory-view-header">

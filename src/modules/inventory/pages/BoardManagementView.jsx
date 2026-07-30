@@ -6,14 +6,19 @@
 "use client";
 
 import "./BoardManagementView.css";
+import "./InventoryView.css";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  Plus, Pencil, Trash2, ExternalLink,
+  Plus, Pencil, Trash2, ExternalLink, Menu,
+  LayoutDashboard, BarChart3, Package, Wrench,
+  Warehouse, Truck, ClipboardList, Columns, Settings,
 } from "lucide-react";
 import {
   Button, Card, Input, Modal, Badge, toastError, toastSuccess,
 } from "@/shared/components/ui";
 import TableZ from "@/shared/components/ui/table/TableZ";
+import { INVENTORY_VIEWS } from "../data/inventory.data";
+import { useRouter } from "next/navigation";
 import {
   loadAllBoards,
   createBoardAction,
@@ -41,6 +46,8 @@ const BOARD_COLORS = [
 // ─── MAIN VIEW ──────────────────────────────────────────────
 
 export default function BoardManagementView({ onOpenBoard }) {
+  const router = useRouter();
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const [boards, setBoards] = useState([]);
   const [isBusy, setIsBusy] = useState(false);
   const [modal, setModal] = useState(null);
@@ -208,10 +215,72 @@ export default function BoardManagementView({ onOpenBoard }) {
     },
   ], [openEditModal, handleDelete, onOpenBoard]);
 
+  // ─── Navigation ───────────────────────────────────────────
+
+  const handleNavClick = useCallback((viewId) => {
+    if (viewId === "boardSetup") return; // already here
+    if (viewId === "boards") { router.push("/inventory/board"); return; }
+    router.push("/inventory");
+  }, [router]);
+
   // ─── Render ───────────────────────────────────────────────
 
   return (
-    <div className="board-mgmt-view">
+    <div className="inventory-module-layout">
+      {/* Drawer overlay (mobile only) */}
+      <div
+        className={`inventory-drawer-overlay${drawerOpen ? " is-open" : ""}`}
+        onClick={() => setDrawerOpen(false)}
+        aria-hidden="true"
+      />
+
+      {/* Drawer sidebar */}
+      <aside className={`inventory-sidebar${drawerOpen ? " is-open" : ""}`}>
+        <div className="inventory-sidebar-brand">
+          <button
+            className="inventory-drawer-toggle"
+            onClick={() => setDrawerOpen((prev) => !prev)}
+            aria-label={drawerOpen ? "Close navigation" : "Open navigation"}
+          >
+            <Menu size={18} />
+          </button>
+          <div className="inventory-sidebar-brand-text">
+            <div className="inventory-sidebar-title">Menu</div>
+          </div>
+        </div>
+        <nav className="inventory-sidebar-nav">
+          {INVENTORY_VIEWS.map((n) => {
+            const iconMap = {
+              LayoutDashboard, BarChart3, Package, Wrench,
+              Warehouse, Truck, ClipboardList, Columns, Settings,
+            };
+            const IconComponent = iconMap[n.icon];
+            const isActive = n.id === "boardSetup";
+            return (
+              <button
+                key={n.id}
+                onClick={() => handleNavClick(n.id)}
+                className={`inventory-sidebar-nav-item${isActive ? " is-active" : ""}`}
+                title={n.label}
+              >
+                {IconComponent && <IconComponent size={18} className="inventory-sidebar-nav-icon" />}
+                <span className="inventory-sidebar-nav-label">{n.label}</span>
+              </button>
+            );
+          })}
+        </nav>
+      </aside>
+
+      {/* Main content */}
+      <main className="inventory-main">
+        <button
+          className="inventory-drawer-toggle-mobile"
+          onClick={() => setDrawerOpen(true)}
+          aria-label="Open navigation"
+        >
+          <Menu size={20} />
+        </button>
+        <div className="board-mgmt-view">
       <div className="inventory-view-header">
         <div>
           <h1 className="inventory-page-title" style={{ margin: 0 }}>Board Setup</h1>
@@ -293,6 +362,8 @@ export default function BoardManagementView({ onOpenBoard }) {
           </select>
         </div>
       </Modal>
+    </div>
+      </main>
     </div>
   );
 }

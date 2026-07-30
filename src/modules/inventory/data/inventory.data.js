@@ -10,13 +10,15 @@ import { isEntityActive } from "./inventoryHelpers.data";
 // ─── NAVIGATION ─────────────────────────────────────────────
 
 export const INVENTORY_VIEWS = [
-  { id: "dashboard", label: "Dashboard" },
-  { id: "stocklevels", label: "Stock levels" },
-  { id: "materials", label: "Materials" },
-  { id: "equipment", label: "Equipment" },
-  { id: "warehouses", label: "Warehouse" }, 
-  { id: "suppliers", label: "Suppliers" }, 
-  { id: "log", label: "Activity log" },
+  { id: "dashboard", label: "Dashboard", icon: "LayoutDashboard" },
+  { id: "stocklevels", label: "Stock levels", icon: "BarChart3" },
+  { id: "materials", label: "Materials", icon: "Package" },
+  { id: "equipment", label: "Equipment", icon: "Wrench" },
+  { id: "warehouses", label: "Warehouse", icon: "Warehouse" },
+  { id: "suppliers", label: "Suppliers", icon: "Truck" },
+  { id: "log", label: "Activity log", icon: "ClipboardList" },
+  { id: "boards", label: "Boards", icon: "Columns" },
+  { id: "boardSetup", label: "Board Setup", icon: "Settings" },
 ];
 
 // ─── STATUS MAP ─────────────────────────────────────────────
