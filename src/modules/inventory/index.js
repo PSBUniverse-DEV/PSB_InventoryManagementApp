@@ -66,6 +66,8 @@ const inventoryModule = {
   routes: [
     { path: "/inventory", page: "InventoryPage" },
     { path: "/inventory/configure", page: "InventoryConfigPage" },
+    { path: "/inventory/board", page: "BoardPage" },
+    { path: "/inventory/board/manage", page: "BoardManagementPage" },
   ],
 };
 
