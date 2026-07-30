@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { Container, Spinner } from "react-bootstrap";
+import { Spinner } from "react-bootstrap";
 import Header from "@/shared/components/layout/Header";
 import { useAuth } from "@/core/auth/useAuth";
 import { getSupabase } from "@/core/supabase/client";
@@ -379,9 +379,7 @@ export default function AppLayout({ children }) {
         loaderProgress={progress}
         loaderVisible={progressVisible}
       />
-      <Container fluid className="app-shell-body">
-        <section className="app-content">{children}</section>
-      </Container>
+      <main className="app-shell-body">{children}</main>
     </div>
   );
 }
