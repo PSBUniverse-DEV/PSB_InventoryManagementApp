@@ -1,0 +1,416 @@
+/**
+ * Inventory Transaction View — Styles
+ *
+ * Two-column layout for recording stock in/out, transfer, and adjustment transactions.
+ * Reuses .inventory-module-layout, .inventory-sidebar, .inventory-main from InventoryView.css.
+ */
+
+/* ─── Header ─────────────────────────────────────────────── */
+
+.invoice-tx-header {
+  margin-bottom: 1.25rem;
+}
+
+.invoice-tx-header .inventory-page-title {
+  display: flex;
+  align-items: center;
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: var(--psb-text);
+}
+
+/* ─── Two-column layout ──────────────────────────────────── */
+
+.invoice-tx-layout {
+  display: flex;
+  gap: 1.5rem;
+  align-items: flex-start;
+}
+
+/* ─── Left column (line items) ──────────────────────────── */
+
+.invoice-tx-left {
+  flex: 1.6;
+  min-width: 0;
+}
+
+/* ─── Right column ───────────────────────────────────────── */
+
+.invoice-tx-right {
+  flex: 1;
+  min-width: 280px;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+/* ─── Toolbar ────────────────────────────────────────────── */
+
+.invoice-tx-toolbar {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 1rem;
+  align-items: flex-end;
+}
+
+.invoice-tx-toolbar-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 180px;
+}
+
+.invoice-tx-search-field {
+  flex: 1;
+  min-width: 200px;
+}
+
+.invoice-tx-toolbar-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--psb-muted);
+  margin-bottom: 0;
+}
+
+.invoice-tx-search-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.invoice-tx-search-icon {
+  position: absolute;
+  left: 0.6rem;
+  color: var(--psb-muted);
+  pointer-events: none;
+}
+
+.invoice-tx-search-input {
+  padding-left: 2rem !important;
+}
+
+/* ─── Line items table ───────────────────────────────────── */
+
+.invoice-tx-table-card {
+  overflow-x: auto;
+}
+
+.invoice-tx-table-card .card-body {
+  padding: 0;
+}
+
+.invoice-tx-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.invoice-tx-table thead {
+  background: var(--psb-brand-light, rgba(24, 40, 72, 0.06));
+}
+
+.invoice-tx-table th {
+  padding: 0.6rem 0.75rem;
+  text-align: left;
+  font-weight: 600;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--psb-muted);
+  border-bottom: 2px solid var(--psb-border, #dee2e6);
+  white-space: nowrap;
+}
+
+.invoice-tx-table td {
+  padding: 0.4rem 0.75rem;
+  border-bottom: 1px solid var(--psb-border-light, #eef0f2);
+  vertical-align: middle;
+}
+
+.invoice-tx-table tbody tr:hover {
+  background: var(--psb-bg-hover, rgba(0, 0, 0, 0.015));
+}
+
+.invoice-tx-table .form-control-sm {
+  padding: 0.3rem 0.5rem;
+  font-size: 0.82rem;
+  border-radius: 4px;
+  width: 100%;
+  min-width: 80px;
+}
+
+.invoice-tx-col-num {
+  width: 80px;
+  text-align: center;
+}
+
+.invoice-tx-col-currency {
+  width: 110px;
+  text-align: right;
+}
+
+.invoice-tx-col-action {
+  width: 40px;
+  text-align: center;
+}
+
+.invoice-tx-input-num {
+  text-align: center;
+  max-width: 70px;
+}
+
+.invoice-tx-input-currency {
+  text-align: right;
+  max-width: 100px;
+}
+
+.invoice-tx-line-total {
+  font-family: var(--psb-mono, "SF Mono", "Consolas", monospace);
+  font-weight: 600;
+  color: var(--psb-text);
+}
+
+.invoice-tx-empty {
+  text-align: center;
+  padding: 2rem 1rem !important;
+  color: var(--psb-muted);
+  font-style: italic;
+}
+
+.invoice-tx-remove-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: none;
+  background: transparent;
+  color: var(--psb-muted);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.invoice-tx-remove-btn:hover {
+  background: var(--psb-status-suspended, #dc3545);
+  color: #fff;
+}
+
+/* ─── Add line button ────────────────────────────────────── */
+
+.invoice-tx-add-line-btn {
+  width: 100%;
+  margin-top: 0.75rem;
+  justify-content: center;
+  gap: 0.4rem;
+  border-style: dashed;
+}
+
+/* ─── Right column cards ─────────────────────────────────── */
+
+.invoice-tx-card {
+  margin-bottom: 0;
+}
+
+.invoice-tx-card .card-header {
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+
+.invoice-tx-card .form-label {
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--psb-muted);
+}
+
+/* ─── Project input emphasis ─────────────────────────────── */
+
+.invoice-tx-project-input {
+  font-weight: 600 !important;
+  border-color: var(--psb-gold, #c69c2c) !important;
+  border-width: 2px !important;
+}
+
+.invoice-tx-project-input:focus {
+  box-shadow: 0 0 0 0.15rem rgba(198, 156, 44, 0.25) !important;
+}
+
+/* ─── Monospace reference ────────────────────────────────── */
+
+.invoice-tx-mono {
+  font-family: var(--psb-mono, "SF Mono", "Consolas", monospace);
+  letter-spacing: 0.05em;
+}
+
+/* ─── Summary card ───────────────────────────────────────── */
+
+.invoice-tx-summary-card {
+  background: var(--psb-brand-light, rgba(24, 40, 72, 0.03));
+  border: 1px solid var(--psb-border, #dee2e6);
+}
+
+.invoice-tx-summary-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--psb-border-light, #eef0f2);
+}
+
+.invoice-tx-summary-row:last-child {
+  border-bottom: none;
+}
+
+.invoice-tx-summary-label {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  color: var(--psb-muted);
+  font-weight: 500;
+}
+
+.invoice-tx-summary-value {
+  font-family: var(--psb-mono, "SF Mono", "Consolas", monospace);
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: var(--psb-text);
+}
+
+.invoice-tx-summary-grand {
+  padding-top: 0.75rem;
+  margin-top: 0.25rem;
+  border-top: 2px solid var(--psb-gold, #c69c2c);
+  border-bottom: none;
+}
+
+.invoice-tx-summary-grand .invoice-tx-summary-label {
+  font-weight: 700;
+  font-size: 1rem;
+  color: var(--psb-text);
+}
+
+.invoice-tx-summary-grand-value {
+  font-family: var(--psb-mono, "SF Mono", "Consolas", monospace);
+  font-weight: 800;
+  font-size: 1.25rem;
+  color: var(--psb-gold, #c69c2c);
+}
+
+/* ─── Action buttons ─────────────────────────────────────── */
+
+.invoice-tx-action-btn {
+  width: 100%;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.65rem 1rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.invoice-tx-cancel-btn {
+  color: var(--psb-muted);
+  border-color: var(--psb-border, #dee2e6);
+  margin-top: 0.25rem;
+}
+
+/* ─── Search dropdown ───────────────────────────────────── */
+
+.invoice-tx-search-wrap {
+  position: relative;
+}
+
+.invoice-tx-search-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 50;
+  background: var(--psb-bg, #fff);
+  border: 1px solid var(--psb-border, #dee2e6);
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  margin-top: 4px;
+  max-height: 260px;
+  overflow-y: auto;
+  list-style: none;
+  padding: 0;
+  margin-bottom: 0;
+}
+
+.invoice-tx-search-dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.55rem 0.75rem;
+  cursor: pointer;
+  border-bottom: 1px solid var(--psb-border-light, #eef0f2);
+  font-size: 0.82rem;
+  transition: background 0.12s;
+}
+
+.invoice-tx-search-dropdown-item:last-child {
+  border-bottom: none;
+}
+
+.invoice-tx-search-dropdown-item:hover {
+  background: var(--psb-brand-light, rgba(24, 40, 72, 0.06));
+}
+
+.invoice-tx-search-dd-sku {
+  font-family: var(--psb-mono, "SF Mono", "Consolas", monospace);
+  font-weight: 600;
+  color: var(--psb-gold, #c69c2c);
+  min-width: 90px;
+  font-size: 0.78rem;
+}
+
+.invoice-tx-search-dd-name {
+  flex: 1;
+  color: var(--psb-text);
+}
+
+.invoice-tx-search-dd-barcode {
+  font-family: var(--psb-mono, "SF Mono", "Consolas", monospace);
+  font-size: 0.7rem;
+  color: var(--psb-muted);
+  background: var(--psb-brand-light, rgba(24, 40, 72, 0.06));
+  padding: 0.15rem 0.45rem;
+  border-radius: 3px;
+  white-space: nowrap;
+}
+
+.invoice-tx-search-dd-bin {
+  font-size: 0.72rem;
+  color: var(--psb-muted);
+  background: var(--psb-bg-hover, rgba(0, 0, 0, 0.04));
+  padding: 0.15rem 0.45rem;
+  border-radius: 3px;
+}
+
+/* ─── Responsive ─────────────────────────────────────────── */
+
+@media (max-width: 991px) {
+  .invoice-tx-layout {
+    flex-direction: column;
+  }
+
+  .invoice-tx-left,
+  .invoice-tx-right {
+    flex: none;
+    width: 100%;
+  }
+
+  .invoice-tx-toolbar {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .invoice-tx-toolbar-field {
+    min-width: 100%;
+  }
+}

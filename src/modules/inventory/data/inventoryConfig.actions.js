@@ -14,6 +14,7 @@ const TABLE_MAP = {
   units: "inv_s_unit",
   statuses: "inv_s_equipmentstatus",
   warehouseTypes: "inv_s_warehousetype",
+  transactionTypes: "inv_s_transactiontype",
 };
 
 const PK_MAP = {
@@ -21,6 +22,7 @@ const PK_MAP = {
   units: "unit_id",
   statuses: "status_id",
   warehouseTypes: "type_id",
+  transactionTypes: "transaction_type_id",
 };
 
 function getTableName(entityKey) {
@@ -66,18 +68,77 @@ export async function loadInventoryConfigData() {
   const results = {};
 
   for (const key of Object.keys(TABLE_MAP)) {
-    const { data, error } = await supabase
-      .from(TABLE_MAP[key])
+    try {
+      // Try ordering by display_order first; fall back to name-only if column missing
+      let query = supabase.from(TABLE_MAP[key]).select("*").order("display_order", { ascending: true }).order("name", { ascending: true });
+      let { data, error } = await query;
+
+      // If display_order column doesn't exist, retry without it
+      if (error && (error.message?.includes("display_order") || error.code === "42703")) {
+        query = supabase.from(TABLE_MAP[key]).select("*").order("name", { ascending: true });
+        const retry = await query;
+        data = retry.data;
+        error = retry.error;
+      }
+
+      if (error) throw new Error(`Failed to load ${key}: ${error.message}`);
+      const pkColumn = PK_MAP[key];
+      results[key] = (data ?? []).map((r) => ({ ...r, id: r[pkColumn] }));
+    } catch (err) {
+      // Silently skip tables that can't be loaded (missing columns, etc.)
+      results[key] = [];
+    }
+  }
+
+  // Load tracking types separately (no display_order column, may use different PK)
+  try {
+    const { data: trackingData, error: trackingError } = await supabase
+      .from("inv_s_trackingtype")
       .select("*")
-      .order("display_order", { ascending: true })
       .order("name", { ascending: true });
 
-    if (error) throw new Error(`Failed to load ${key}: ${error.message}`);
-    const pkColumn = PK_MAP[key];
-    results[key] = (data ?? []).map((r) => ({ ...r, id: r[pkColumn] }));
+    if (trackingError) {
+      console.error("[inventoryConfig] Failed to load tracking types:", trackingError.message);
+      results.trackingTypes = [];
+    } else {
+      results.trackingTypes = (trackingData ?? []).map((r) => ({
+        ...r,
+        id: r.id ?? r.tracking_type_id,
+      }));
+    }
+  } catch (err) {
+    console.error("[inventoryConfig] Exception loading tracking types:", err?.message);
+    results.trackingTypes = [];
+  }
+
+  // Fallback: provide default tracking types if none exist in the database
+  if (!results.trackingTypes || results.trackingTypes.length === 0) {
+    console.warn("[inventoryConfig] No tracking types found in database, using defaults");
+    results.trackingTypes = [
+      { id: 1, tracking_type_id: 1, name: "Serial", key: "serial", is_active: true },
+      { id: 2, tracking_type_id: 2, name: "Batch", key: "batch", is_active: true },
+      { id: 3, tracking_type_id: 3, name: "Lot", key: "lot", is_active: true },
+      { id: 4, tracking_type_id: 4, name: "None", key: "none", is_active: true },
+    ];
   }
 
   return results;
+}
+
+// ─── HELPERS ─────────────────────────────────────────────────
+
+async function safeQuery(queryFn, pkColumn = "id") {
+  try {
+    const { data, error } = await queryFn();
+    if (error) {
+      console.warn("safeQuery error:", error.message);
+      return [];
+    }
+    return (data ?? []).map((r) => ({ ...r, id: r[pkColumn] }));
+  } catch (err) {
+    console.warn("safeQuery exception:", err?.message);
+    return [];
+  }
 }
 
 // ─── CREATE ─────────────────────────────────────────────────

@@ -21,14 +21,30 @@ export async function loadInventoryData() {
   const [itemsRes, warehousesRes, transactionsRes, stockLevelsRes, suppliersRes] = await Promise.all([
     safeQuery(() => supabase.from("inv_s_inventoryitem").select("*").order("name", { ascending: true })),
     safeQuery(() => supabase.from("inv_s_warehouse").select("*").order("name", { ascending: true })),
-    safeQuery(() => supabase.from("inv_t_inventorytransaction").select("*").order("created_at", { ascending: false }).limit(200)),
+    safeQuery(() => supabase.from("inv_t_activitylog").select("*").order("created_at", { ascending: false }).limit(200)),
     safeQuery(() => supabase.from("inv_t_stockslevels").select("*").order("created_at", { ascending: false })),
     safeQuery(() => supabase.from("inv_s_supplier").select("*").order("name", { ascending: true })),
   ]);
 
+  // Compute quantity per item by aggregating stock levels
+  const stockLevels = stockLevelsRes ?? [];
+  const quantityByItemId = {};
+  for (const sl of stockLevels) {
+    const itemId = sl.item_id;
+    if (itemId != null) {
+      quantityByItemId[itemId] = (quantityByItemId[itemId] || 0) + (Number(sl.quantity) || 0);
+    }
+  }
+
+  const items = (itemsRes ?? []).map((r) => ({
+    ...r,
+    id: r.id ?? r.item_id,
+    quantity: quantityByItemId[r.item_id ?? r.id] ?? 0, // computed from stock levels
+  }));
+
   return {
     config,
-    items: (itemsRes ?? []).map((r) => ({ ...r, id: r.id ?? r.item_id })),
+    items,
     warehouses: (warehousesRes ?? []).map((r) => ({ ...r, id: r.id ?? r.warehouse_id })),
     transactions: (transactionsRes ?? []).map((r) => ({ ...r, id: r.id ?? r.transaction_id, type: r.transaction_type ?? r.type })),
     stockLevels: (stockLevelsRes ?? []).map((r) => ({ ...r, id: r.id ?? r.stocklevel_id })),
@@ -60,30 +76,41 @@ export async function createWarehouseAction(payload) {
 
 export async function createItemAction(payload) {
   const supabase = getSupabaseAdmin();
-  
+
   const { data, error } = await supabase
     .from("inv_s_inventoryitem")
     .insert([{
       name: payload?.name || "",
+      description: payload?.description || payload?.name || "",
       sku: payload?.sku || "",
+      barcode: payload?.barcode || null,
       category_id: payload?.categoryId || null,
       unit_id: payload?.unitId || null,
-      quantity: payload?.quantity || 0,
       min_threshold: payload?.minThreshold || 0,
+      max_threshold: payload?.maxThreshold || 0,
+      reorder_point: payload?.reorderPoint || 0,
+      default_reorder_quantity: payload?.defaultReorderQty || 0,
       cost: payload?.cost || 0,
       warehouse_id: payload?.warehouseId || null,
       status_id: payload?.statusId || null,
-      assigned_to: payload?.assignedTo || null,
       wholesale_price: payload?.wholesalePrice || null,
       retail_price: payload?.retailPrice || null,
       supplier_id: payload?.supplierId || null,
+      tracking_type_id: payload?.trackingTypeId || null,
       classification: payload?.classification || "Material",
+      weight: payload?.weight || null,
+      length: payload?.length || null,
+      width: payload?.width || null,
+      height: payload?.height || null,
+      color: payload?.color || null,
+      gauge: payload?.gauge || null,
+      specification: payload?.specification ? (typeof payload.specification === "object" ? payload.specification : { value: payload.specification }) : null,
       is_active: true,
     }])
     .select()
     .single();
-    
-    
+
+
   if (error) throw new Error(`Failed to create item: ${error.message}`);
   return data;
 }
@@ -94,21 +121,36 @@ export async function updateItemAction(id, updates) {
   const supabase = getSupabaseAdmin();
   const patch = {};
   if (updates?.name !== undefined) patch.name = updates.name;
+  if (updates?.description !== undefined) patch.description = updates.description;
   if (updates?.sku !== undefined) patch.sku = updates.sku;
+  if (updates?.barcode !== undefined) patch.barcode = updates.barcode;
   if (updates?.categoryId !== undefined) patch.category_id = updates.categoryId;
   if (updates?.unitId !== undefined) patch.unit_id = updates.unitId;
-  if (updates?.quantity !== undefined) patch.quantity = updates.quantity;
   if (updates?.minThreshold !== undefined) patch.min_threshold = updates.minThreshold;
+  if (updates?.maxThreshold !== undefined) patch.max_threshold = updates.maxThreshold;
+  if (updates?.reorderPoint !== undefined) patch.reorder_point = updates.reorderPoint;
+  if (updates?.defaultReorderQty !== undefined) patch.default_reorder_quantity = updates.defaultReorderQty;
   if (updates?.cost !== undefined) patch.cost = updates.cost;
   if (updates?.warehouseId !== undefined) patch.warehouse_id = updates.warehouseId;
   if (updates?.statusId !== undefined) patch.status_id = updates.statusId;
-  if (updates?.assignedTo !== undefined) patch.assigned_to = updates.assignedTo;
   if (updates?.wholesalePrice !== undefined) patch.wholesale_price = updates.wholesalePrice;
   if (updates?.retailPrice !== undefined) patch.retail_price = updates.retailPrice;
   if (updates?.supplierId !== undefined) patch.supplier_id = updates.supplierId;
+  if (updates?.trackingTypeId !== undefined) patch.tracking_type_id = updates.trackingTypeId;
   if (updates?.classification !== undefined) patch.classification = updates.classification;
+  if (updates?.weight !== undefined) patch.weight = updates.weight;
+  if (updates?.length !== undefined) patch.length = updates.length;
+  if (updates?.width !== undefined) patch.width = updates.width;
+  if (updates?.height !== undefined) patch.height = updates.height;
+  if (updates?.color !== undefined) patch.color = updates.color;
+  if (updates?.gauge !== undefined) patch.gauge = updates.gauge;
+  if (updates?.specification !== undefined) {
+    patch.specification = updates.specification
+      ? (typeof updates.specification === "object" ? updates.specification : { value: updates.specification })
+      : null;
+  }
   patch.updated_at = new Date().toISOString();
-     
+
 
   const { error } = await supabase
     .from("inv_s_inventoryitem")
@@ -129,30 +171,59 @@ export async function transferItemAction(item, toWarehouseId, qty) {
     // Equipment: just reassign warehouse
     await updateItemAction(item.id, { warehouseId: toWarehouseId });
   } else {
-    // Material: decrement source, upsert destination
-    await updateItemAction(item.id, { quantity: Math.max(0, (item.quantity || 0) - qty) });
-
+    // Material: quantity is tracked in stock levels, not on the item row.
+    // Transfer creates/updates stock level records at the destination.
     // Check if same SKU already exists at destination
     const { data: existing } = await supabase
       .from("inv_s_inventoryitem")
-      .select("id, quantity")
+      .select("item_id")
       .eq("sku", item.sku)
       .eq("warehouse_id", toWarehouseId)
       .maybeSingle();
 
     if (existing) {
-      await updateItemAction(existing.id, { quantity: (existing.quantity || 0) + qty });
+      // Add to existing stock level at destination
+      const destItemId = existing.item_id;
+      await createStockLevelAction({
+        itemId: destItemId,
+        warehouseId: toWarehouseId,
+        quantity: qty,
+        unitId: item.unit_id,
+      });
     } else {
-      await createItemAction({
-        name: item.name, sku: item.sku, categoryId: item.category_id,
-        unitId: item.unit_id, quantity: qty, minThreshold: item.minThreshold || 0,
-        cost: item.cost || 0, warehouseId: toWarehouseId,
+      // Create new item at destination with stock level
+      const newItem = await createItemAction({
+        name: item.name,
+        description: item.description,
+        sku: item.sku,
+        categoryId: item.category_id,
+        unitId: item.unit_id,
+        minThreshold: item.min_threshold || 0,
+        maxThreshold: item.max_threshold || 0,
+        reorderPoint: item.reorder_point || 0,
+        defaultReorderQty: item.default_reorder_quantity || 0,
+        cost: item.cost || 0,
+        warehouseId: toWarehouseId,
+        classification: item.classification,
+        weight: item.weight,
+        length: item.length,
+        width: item.width,
+        height: item.height,
+        color: item.color,
+        gauge: item.gauge,
+        specification: item.specification || null,
+      });
+      await createStockLevelAction({
+        itemId: newItem.item_id,
+        warehouseId: toWarehouseId,
+        quantity: qty,
+        unitId: item.unit_id,
       });
     }
   }
 }
 
-//#endregion  
+//#endregion
 
 //#region ─── TRANSACTION LOG ─────────────────────────────────────────
 
@@ -244,10 +315,10 @@ function slugifyKey(name) {
   return `${base}_${Date.now()}`;
 }
 
-export async function createSupplierAction(payload) { 
+export async function createSupplierAction(payload) {
     const supabase = getSupabaseAdmin();
     const name = payload?.name || "";
-    const { data, error } = await supabase  
+    const { data, error } = await supabase
      .from("inv_s_supplier" )
      .insert([{
       key: slugifyKey(name),

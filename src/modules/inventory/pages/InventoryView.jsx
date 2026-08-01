@@ -10,7 +10,7 @@ import "./InventoryView.css";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Plus, Search, RefreshCw,
-  ArrowRightLeft, AlertTriangle, MapPin, User,
+  ArrowRightLeft, ArrowLeftRight, AlertTriangle, MapPin, User,
   PackageCheck, Warehouse, Pencil, Trash2, Menu,
   LayoutDashboard, BarChart3, Package, Wrench,
   Truck, ClipboardList, Columns, Settings,
@@ -138,7 +138,7 @@ export default function InventoryView({ initialData }) {
   const runMutation = useCallback(async (fn, txEntry) => {
     if (isBusy) return;
         setIsBusy(true);
-    
+
     try {
       await fn();
       if (txEntry) await logTransactionAction(txEntry).catch(() => {});
@@ -210,13 +210,27 @@ export default function InventoryView({ initialData }) {
         unitId: item.unitId ?? item.unit_id,
         warehouseId: item.warehouseId ?? item.warehouse_id,
         minThreshold: item.minThreshold ?? item.min_threshold,
+        maxThreshold: item.maxThreshold ?? item.max_threshold ?? 0,
+        reorderPoint: item.reorderPoint ?? item.reorder_point ?? 0,
+        defaultReorderQty: item.defaultReorderQty ?? item.default_reorder_quantity ?? 0,
         wholesalePrice: item.wholesalePrice ?? item.wholesale_price,
         retailPrice: item.retailPrice ?? item.retail_price,
-        assignedTo: item.assignedTo ?? item.assigned_to,
         statusId: item.statusId ?? item.status_id,
         supplierId: item.supplierId ?? item.supplier_id,
+        trackingTypeId: item.trackingTypeId ?? item.tracking_type_id,
         itemId: item.itemId ?? item.item_id,
         binLocation: item.binLocation ?? item.bin_location,
+        barcode: item.barcode ?? item.barcode ?? null,
+        description: item.description ?? item.description ?? "",
+        weight: item.weight ?? item.weight ?? null,
+        length: item.length ?? item.length ?? null,
+        width: item.width ?? item.width ?? null,
+        height: item.height ?? item.height ?? null,
+        color: item.color ?? item.color ?? null,
+        gauge: item.gauge ?? item.gauge ?? null,
+        specification: item.specification != null
+          ? (typeof item.specification === "object" ? (item.specification.value || JSON.stringify(item.specification)) : String(item.specification))
+          : "",
       });
     } else {
       setForm({});
@@ -236,6 +250,10 @@ export default function InventoryView({ initialData }) {
     }
     if (viewId === "boardSetup") {
       router.push("/inventory/board/manage");
+      return;
+    }
+    if (viewId === "transaction") {
+      router.push("/inventory/transaction");
       return;
     }
     setView(viewId);
@@ -264,7 +282,7 @@ export default function InventoryView({ initialData }) {
     const wh = (data?.warehouses || []).find((w) => String(w.id) === String(form.warehouseId));
     runMutation(
       () => createItemAction({ ...form, categoryId: form.categoryId }),
-      { type: `${category} added`, itemId: null, itemName: form.name, sku: form.sku, warehouseId: form.warehouseId, warehouseName: wh?.name || "Unknown", qtyChange: Number(form.quantity) || 0 },
+      { type: `${category} added`, itemId: null, itemName: form.name, sku: form.sku, warehouseId: form.warehouseId, warehouseName: wh?.name || "Unknown" },
     );
     closeModal();
   }, [form, data, runMutation, showToast, closeModal]);
@@ -275,14 +293,20 @@ export default function InventoryView({ initialData }) {
       showToast("Enter a valid quantity.", "error");
       return;
     }
-    const unitAbbrev = unitLookup[String(form.unit_id)] || "pcs";
+    // Restock now creates a stock level record instead of updating item quantity directly
     runMutation(
-      () => updateItemAction(form.id, { quantity: (form.quantity || 0) + qty }),
-      { type: "Restock", itemId: form.id, itemName: form.name, sku: form.sku, warehouseId: form.warehouse_id, warehouseName: whName(form.warehouse_id), detail: `+${qty} ${unitAbbrev}`, qtyChange: qty },
+      () => createStockLevelAction({
+        itemId: form.id,
+        warehouseId: form.warehouse_id || form.warehouseId,
+        quantity: qty,
+        unitId: form.unit_id || form.unitId,
+        binLocation: form.binLocation || null,
+      }),
+      { type: "Restock", itemId: form.id, itemName: form.name, sku: form.sku, warehouseId: form.warehouse_id, warehouseName: whName(form.warehouse_id), detail: `+${qty}`, qtyChange: qty },
     );
     closeModal();
-  }, [form, runMutation, showToast, whName, unitLookup, closeModal]);
-  
+  }, [form, runMutation, showToast, whName, closeModal]);
+
 
   const handleTransfer = useCallback(() => {
     const formCatName = form?.classification || form.category || "";
@@ -293,7 +317,7 @@ export default function InventoryView({ initialData }) {
       showToast("Choose a different destination location.", "error");
       return;
     }
-    if (!isEquipment && (!qty || qty <= 0 || qty > (form.quantity || 0))) {
+    if (!isEquipment && (!qty || qty <= 0)) {
       showToast("Enter a valid transfer quantity.", "error");
       return;
     }
@@ -310,8 +334,9 @@ export default function InventoryView({ initialData }) {
       showToast("Enter who is taking this equipment.", "error");
       return;
     }
+    // assigned_to column is removed; assignment is logged in transaction detail only
     runMutation(
-      () => updateItemAction(form.id, { statusId: statusIdByName("In Use"), assignedTo: form.assignedTo }),
+      () => updateItemAction(form.id, { statusId: statusIdByName("In Use") }),
       { type: "Check out", itemId: form.id, itemName: form.name, sku: form.sku, warehouseId: form.warehouse_id, warehouseName: whName(form.warehouse_id), assignedTo: form.assignedTo },
     );
     closeModal();
@@ -324,13 +349,30 @@ export default function InventoryView({ initialData }) {
     }
     runMutation(
       () => updateItemAction(form.id, {
-        name: form.name, sku: form.sku, classification: form.classification,
-        categoryId: form.categoryId, warehouseId: form.warehouseId,
-        unitId: form.unitId, quantity: Number(form.quantity) || 0,
+        name: form.name,
+        description: form.description,
+        sku: form.sku,
+        barcode: form.barcode,
+        classification: form.classification,
+        categoryId: form.categoryId,
+        warehouseId: form.warehouseId,
+        unitId: form.unitId,
         minThreshold: Number(form.minThreshold) || 0,
+        maxThreshold: Number(form.maxThreshold) || 0,
+        reorderPoint: Number(form.reorderPoint) || 0,
+        defaultReorderQty: Number(form.defaultReorderQty) || 0,
         cost: Number(form.cost) || 0,
         wholesalePrice: form.wholesalePrice || null,
         retailPrice: form.retailPrice || null,
+        supplierId: form.supplierId || null,
+        trackingTypeId: form.trackingTypeId || null,
+        weight: form.weight || null,
+        length: form.length || null,
+        width: form.width || null,
+        height: form.height || null,
+        color: form.color || null,
+        gauge: form.gauge || null,
+        specification: form.specification || null,
       }),
       { type: "Edit", itemId: form.id, itemName: form.name, sku: form.sku, warehouseId: form.warehouse_id, warehouseName: whName(form.warehouse_id) },
     );
@@ -346,8 +388,8 @@ export default function InventoryView({ initialData }) {
 
   const handleCheckin = useCallback((item) => {
     runMutation(
-      () => updateItemAction(item.id, { statusId: statusIdByName("Available"), assignedTo: null }),
-      { type: "Check in", itemName: item.name, detail: `Returned by ${item.assigned_to || "field crew"}`, warehouseName: whName(item.warehouse_id) },
+      () => updateItemAction(item.id, { statusId: statusIdByName("Available") }),
+      { type: "Check in", itemName: item.name, detail: "Returned to available", warehouseName: whName(item.warehouse_id) },
     );
   }, [runMutation, whName, statusIdByName]);
 
@@ -452,7 +494,7 @@ export default function InventoryView({ initialData }) {
           {INVENTORY_VIEWS.map((n) => {
             const iconMap = {
               LayoutDashboard, BarChart3, Package, Wrench,
-              Warehouse, Truck, ClipboardList, Columns, Settings,
+              Warehouse, Truck, ArrowLeftRight, ClipboardList, Columns, Settings,
             };
             const IconComponent = iconMap[n.icon];
             return (
@@ -681,8 +723,8 @@ export default function InventoryView({ initialData }) {
       </main>
 
       {/* Modals */}
-   
-      
+
+
       <Modal show={modal === "addWarehouse"} onHide={closeModal} title="Add location" footer={
         <>
           <Button variant="ghost" size="sm" onClick={closeModal} disabled={isBusy}>Cancel</Button>
@@ -702,7 +744,7 @@ export default function InventoryView({ initialData }) {
           <Input value={form.manager || ""} onChange={(e) => setForm({ ...form, manager: e.target.value })} placeholder="Name" />
         </Field>
       </Modal>
-      
+
 
       <Modal show={modal === "addMaterial" || modal === "addEquipment"} onHide={closeModal}
         bodyClassName="inventory-modal-scrollable"
@@ -717,7 +759,13 @@ export default function InventoryView({ initialData }) {
         }
       >
         <Field label="Name"><Input value={form.name || ""} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
+        <Field label="Description">
+          <Input value={form.description || ""} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Brief description of the item" />
+        </Field>
         <Field label="SKU"><Input value={form.sku || ""} onChange={(e) => setForm({ ...form, sku: e.target.value })} placeholder="e.g. MAT-LUM-206" /></Field>
+        <Field label="Barcode / Serial">
+          <Input value={form.barcode || ""} onChange={(e) => setForm({ ...form, barcode: e.target.value })} placeholder="Scan or type barcode" />
+        </Field>
         <Field label="Classification">
           <Input value={form.classification || ""} onChange={(e) => setForm({ ...form, classification: e.target.value })} placeholder="e.g. Material, Equipment, Office Supply" />
         </Field>
@@ -733,21 +781,52 @@ export default function InventoryView({ initialData }) {
             {(data?.warehouses || []).map((w) => <option key={w.id} value={String(w.id)}>{w.name}</option>)}
           </select>
         </Field>
-        {modal === "addMaterial" && (
-          <>
-            <Field label="Unit">
-              <select className="form-select" value={form.unitId || ""} onChange={(e) => setForm({ ...form, unitId: e.target.value })}>
-                <option value="">Select unit</option>
-                {(data?.config?.units || []).map((u) => <option key={u.id} value={String(u.id)}>{u.name} ({u.abbreviation})</option>)}
-              </select>
+        <>
+          <Field label="Unit">
+            <select className="form-select" value={form.unitId || ""} onChange={(e) => setForm({ ...form, unitId: e.target.value })}>
+              <option value="">Select unit</option>
+              {(data?.config?.units || []).map((u) => <option key={u.id} value={String(u.id)}>{u.name} ({u.abbreviation})</option>)}
+            </select>
+          </Field>
+          <Field label="Tracking type">
+            <select className="form-select" value={form.trackingTypeId || ""} onChange={(e) => setForm({ ...form, trackingTypeId: e.target.value })}>
+              <option value="">Select tracking type</option>
+              {(data?.config?.trackingTypes || []).map((t) => <option key={t.id} value={String(t.id)}>{t.name}</option>)}
+            </select>
+          </Field>
+          {/* <Field label="Reorder threshold"><Input type="number" value={form.minThreshold || ""} onChange={(e) => setForm({ ...form, minThreshold: e.target.value })} /></Field> */}
+          <Field label="Max threshold"><Input type="number" value={form.maxThreshold || ""} onChange={(e) => setForm({ ...form, maxThreshold: e.target.value })} /></Field>
+          <Field label="Reorder point"><Input type="number" value={form.reorderPoint || ""} onChange={(e) => setForm({ ...form, reorderPoint: e.target.value })} /></Field>
+          <Field label="Default reorder qty"><Input type="number" value={form.defaultReorderQty || ""} onChange={(e) => setForm({ ...form, defaultReorderQty: e.target.value })} /></Field>
+          <Field label="Unit cost ($)"><Input type="number" value={form.cost || ""} onChange={(e) => setForm({ ...form, cost: e.target.value })} /></Field>
+          <Field label="Wholesale price ($)"><Input type="number" value={form.wholesalePrice || ""} onChange={(e) => setForm({ ...form, wholesalePrice: e.target.value })} /></Field>
+          <Field label="Retail price ($)"><Input type="number" value={form.retailPrice || ""} onChange={(e) => setForm({ ...form, retailPrice: e.target.value })} /></Field>
+          <Field label="Weight">
+            <Input value={form.weight || ""} onChange={(e) => setForm({ ...form, weight: e.target.value })} placeholder="e.g. 25 kg" />
+          </Field>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.5rem" }}>
+            <Field label="Length">
+              <Input value={form.length || ""} onChange={(e) => setForm({ ...form, length: e.target.value })} placeholder='e.g. 10"' />
             </Field>
-            <Field label="Starting quantity"><Input type="number" value={form.quantity || ""} onChange={(e) => setForm({ ...form, quantity: e.target.value })} /></Field>
-            <Field label="Reorder threshold"><Input type="number" value={form.minThreshold || ""} onChange={(e) => setForm({ ...form, minThreshold: e.target.value })} /></Field>
-            <Field label="Unit cost ($)"><Input type="number" value={form.cost || ""} onChange={(e) => setForm({ ...form, cost: e.target.value })} /></Field>
-            <Field label="Wholesale price ($)"><Input type="number" value={form.wholesalePrice || ""} onChange={(e) => setForm({ ...form, wholesalePrice: e.target.value })} /></Field>
-            <Field label="Retail price ($)"><Input type="number" value={form.retailPrice || ""} onChange={(e) => setForm({ ...form, retailPrice: e.target.value })} /></Field>
-          </>
-        )}
+            <Field label="Width">
+              <Input value={form.width || ""} onChange={(e) => setForm({ ...form, width: e.target.value })} placeholder='e.g. 4"' />
+            </Field>
+            <Field label="Height">
+              <Input value={form.height || ""} onChange={(e) => setForm({ ...form, height: e.target.value })} placeholder='e.g. 2"' />
+            </Field>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.5rem" }}>
+            <Field label="Color">
+              <Input value={form.color || ""} onChange={(e) => setForm({ ...form, color: e.target.value })} placeholder="e.g. Black" />
+            </Field>
+            <Field label="Gauge">
+              <Input value={form.gauge || ""} onChange={(e) => setForm({ ...form, gauge: e.target.value })} placeholder="e.g. 12 AWG" />
+            </Field>
+          </div>
+          <Field label="Specification">
+            <textarea className="form-control" rows="3" value={form.specification || ""} onChange={(e) => setForm({ ...form, specification: e.target.value })} placeholder="e.g. Material grade, certifications, technical notes" />
+          </Field>
+        </>
       </Modal>
 
       <Modal show={modal === "restock"} onHide={closeModal} title={`Restock: ${form.name}`} footer={
@@ -776,7 +855,7 @@ export default function InventoryView({ initialData }) {
           </select>
         </Field>
         {(form.classification || form.category || "") !== "Equipment" && (
-          <Field label={`Quantity to transfer (max ${form.quantity} ${unitLookup[String(form.unit_id)] || "pcs"})`}>
+          <Field label={`Quantity to transfer (current: ${form.quantity} ${unitLookup[String(form.unit_id)] || "pcs"})`}>
             <Input type="number" value={form.qty || ""} onChange={(e) => setForm({ ...form, qty: e.target.value })} />
           </Field>
         )}
@@ -789,7 +868,13 @@ export default function InventoryView({ initialData }) {
         </>
       }>
         <Field label="Name"><Input value={form.name || ""} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
+        <Field label="Description">
+          <Input value={form.description || ""} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Brief description of the item" />
+        </Field>
         <Field label="SKU"><Input value={form.sku || ""} onChange={(e) => setForm({ ...form, sku: e.target.value })} placeholder="e.g. MAT-LUM-206" /></Field>
+        <Field label="Barcode / Serial">
+          <Input value={form.barcode || ""} onChange={(e) => setForm({ ...form, barcode: e.target.value })} placeholder="Scan or type barcode" />
+        </Field>
         <Field label="Classification">
           <Input value={form.classification || ""} onChange={(e) => setForm({ ...form, classification: e.target.value })} placeholder="e.g. Material, Equipment, Office Supply" />
         </Field>
@@ -811,11 +896,45 @@ export default function InventoryView({ initialData }) {
             {(data?.config?.units || []).map((u) => <option key={u.id} value={String(u.id)}>{u.name} ({u.abbreviation})</option>)}
           </select>
         </Field>
-        <Field label="Quantity"><Input type="number" value={form.quantity || ""} onChange={(e) => setForm({ ...form, quantity: e.target.value })} /></Field>
+        <Field label="Tracking type">
+          <select className="form-select" value={form.trackingTypeId || ""} onChange={(e) => setForm({ ...form, trackingTypeId: e.target.value })}>
+            <option value="">None</option>
+            {(data?.config?.trackingTypes || []).map((t) => <option key={t.id} value={String(t.id)}>{t.name}</option>)}
+          </select>
+        </Field>
+        <Field label="Current Qty"><Input type="number" value={form.quantity || 0} disabled /></Field>
         <Field label="Reorder threshold"><Input type="number" value={form.minThreshold || ""} onChange={(e) => setForm({ ...form, minThreshold: e.target.value })} /></Field>
+        <Field label="Max threshold"><Input type="number" value={form.maxThreshold || ""} onChange={(e) => setForm({ ...form, maxThreshold: e.target.value })} /></Field>
+        <Field label="Reorder point"><Input type="number" value={form.reorderPoint || ""} onChange={(e) => setForm({ ...form, reorderPoint: e.target.value })} /></Field>
+        <Field label="Default reorder qty"><Input type="number" value={form.defaultReorderQty || ""} onChange={(e) => setForm({ ...form, defaultReorderQty: e.target.value })} /></Field>
         <Field label="Unit cost ($)"><Input type="number" value={form.cost || ""} onChange={(e) => setForm({ ...form, cost: e.target.value })} /></Field>
         <Field label="Wholesale price ($)"><Input type="number" value={form.wholesalePrice || ""} onChange={(e) => setForm({ ...form, wholesalePrice: e.target.value })} /></Field>
         <Field label="Retail price ($)"><Input type="number" value={form.retailPrice || ""} onChange={(e) => setForm({ ...form, retailPrice: e.target.value })} /></Field>
+        <Field label="Weight">
+          <Input value={form.weight || ""} onChange={(e) => setForm({ ...form, weight: e.target.value })} placeholder="e.g. 25 kg" />
+        </Field>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.5rem" }}>
+          <Field label="Length">
+            <Input value={form.length || ""} onChange={(e) => setForm({ ...form, length: e.target.value })} placeholder='e.g. 10"' />
+          </Field>
+          <Field label="Width">
+            <Input value={form.width || ""} onChange={(e) => setForm({ ...form, width: e.target.value })} placeholder='e.g. 4"' />
+          </Field>
+          <Field label="Height">
+            <Input value={form.height || ""} onChange={(e) => setForm({ ...form, height: e.target.value })} placeholder='e.g. 2"' />
+          </Field>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.5rem" }}>
+          <Field label="Color">
+            <Input value={form.color || ""} onChange={(e) => setForm({ ...form, color: e.target.value })} placeholder="e.g. Black" />
+          </Field>
+          <Field label="Gauge">
+            <Input value={form.gauge || ""} onChange={(e) => setForm({ ...form, gauge: e.target.value })} placeholder="e.g. 12 AWG" />
+          </Field>
+        </div>
+        <Field label="Specification">
+          <textarea className="form-control" rows="3" value={form.specification || ""} onChange={(e) => setForm({ ...form, specification: e.target.value })} placeholder="e.g. Material grade, certifications, technical notes" />
+        </Field>
       </Modal>
 
       <Modal show={modal === "checkout"} onHide={closeModal} title={`Check out: ${form.name}`} footer={
@@ -863,7 +982,7 @@ export default function InventoryView({ initialData }) {
         <Field label="Quantity">
           <Input type="number" value={form.quantity || ""} onChange={(e) => setForm({ ...form, quantity: e.target.value })} />
         </Field>
-        <Field label="OuM">
+        <Field label="UoM">
           <select className="form-select" value={form.unitId || ""} onChange={(e) => setForm({ ...form, unitId: e.target.value })}>
             <option value="">Select unit</option>
             {(data?.config?.units || []).map((u) => (
@@ -940,18 +1059,42 @@ function MaterialsTable({ materials, warehouseName, config, onRestock, onTransfe
     return map;
   }, [config]);
 
+  const trackingLookup = useMemo(() => {
+    const map = {};
+    (config?.trackingTypes || []).forEach((t) => { map[String(t.id)] = t.name; });
+    return map;
+  }, [config]);
+
   const columns = [
     { key: "name", label: "Name", sortable: true, render: (row) => <span className="fw-semibold">{row.name}</span> },
     { key: "sku", label: "SKU", sortable: true, render: (row) => <span className="inventory-mono text-muted">{row.sku}</span> },
+    { key: "barcode", label: "Barcode", sortable: true, render: (row) => <span className="inventory-mono small">{row.barcode || "—"}</span> },
+    { key: "description", label: "Description", sortable: true, render: (row) => <span className="text-muted small">{row.description || "—"}</span> },
     { key: "classification", label: "Classification", sortable: true, render: (row) => <span>{row.classification || "—"}</span> },
+    { key: "tracking", label: "Tracking", sortable: true, align: "center", render: (row) => <span className="text-muted small">{trackingLookup[String(row.tracking_type_id)] || "—"}</span> },
     { key: "unit", label: "UoM", sortable: true, align: "center", render: (row) => {
       const u = uLookup[String(row.unit_id)];
       const text = u ? u.abbreviation : (row.unit || "—");
       return <span className="inventory-mono">{text}</span>;
     }},
-    // { key: "location", label: "Location", sortable: true, render: (row) => warehouseName(row.warehouse_id) },
     { key: "quantity", label: "Qty", sortable: true, align: "center", render: (row) => <span className="inventory-mono">{row.quantity}</span> },
-    { key: "minThreshold", label: "Reorder At", sortable: true, align: "center", render: (row) => <span className="inventory-mono text-muted">{row.min_threshold}</span> },
+    { key: "minThreshold", label: "Min Stock", sortable: true, align: "center", render: (row) => <span className="inventory-mono text-muted">{row.min_threshold}</span> },
+    { key: "maxThreshold", label: "Max Stock", sortable: true, align: "center", render: (row) => <span className="inventory-mono text-muted">{row.max_threshold || 0}</span> },
+    { key: "reorderPoint", label: "Reorder Pt", sortable: true, align: "center", render: (row) => <span className="inventory-mono text-muted">{row.reorder_point || 0}</span> },
+    { key: "defaultReorderQty", label: "Reorder Qty", sortable: true, align: "center", render: (row) => <span className="inventory-mono text-muted">{row.default_reorder_quantity || 0}</span> },
+    { key: "dimensions", label: "Dimensions", sortable: false, align: "center", render: (row) => {
+      const dims = [row.length, row.width, row.height].filter(Boolean);
+      return <span className="text-muted small">{dims.length ? dims.join(" × ") : "—"}</span>;
+    }},
+    { key: "weight", label: "Weight", sortable: true, align: "center", render: (row) => <span className="text-muted small">{row.weight || "—"}</span> },
+    { key: "color", label: "Color", sortable: true, align: "center", render: (row) => <span className="text-muted small">{row.color || "—"}</span> },
+    { key: "gauge", label: "Gauge", sortable: true, align: "center", render: (row) => <span className="text-muted small">{row.gauge || "—"}</span> },
+    { key: "specification", label: "Spec", sortable: true, render: (row) => {
+      const spec = row.specification;
+      if (!spec) return <span className="text-muted small">—</span>;
+      if (typeof spec === "object") return <span className="text-muted small">{spec.value || JSON.stringify(spec)}</span>;
+      return <span className="text-muted small">{spec}</span>;
+    }},
     { key: "cost", label: "Cost ($)", sortable: true, align: "right", render: (row) => row.cost ? <span className="inventory-mono">${Number(row.cost).toFixed(2)}</span> : <span className="text-muted">—</span> },
     { key: "wholesale", label: "Wholesale ($)", sortable: true, align: "right", render: (row) => row.wholesale_price ? <span className="inventory-mono">${Number(row.wholesale_price).toFixed(2)}</span> : <span className="text-muted">—</span> },
     { key: "retail", label: "Retail ($)", sortable: true, align: "right", render: (row) => row.retail_price ? <span className="inventory-mono">${Number(row.retail_price).toFixed(2)}</span> : <span className="text-muted">—</span> },
@@ -999,11 +1142,6 @@ function EquipmentCard({ item, warehouseName, config, onCheckout, onCheckin, onT
         <Badge bg={statusColor === "active" ? "success" : statusColor === "pending" ? "warning" : "secondary"} text={statusColor === "active" ? "white" : "dark"}>
           {statusName}
         </Badge>
-        {item.assigned_to && (
-          <span className="inventory-tag-card-assignee">
-            <User size={12} /> {item.assigned_to}
-          </span>
-        )}
       </div>
       <div className="inventory-tag-card-actions">
         {statusName === "Available" && (

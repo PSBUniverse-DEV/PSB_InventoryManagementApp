@@ -47,6 +47,18 @@ export const ENTITY_CONFIGS = {
     keyLabel: "Key",
     namePlaceholder: "e.g. Storage Yard",
   },
+  trackingtype: {
+    label: "Tracking Types",
+    description: "Types of tracking methods for inventory items (e.g. Serial, Batch).",
+    keyField: "key",
+    hasKey: true,
+    hasAbbreviation: false,
+    keyPlaceholder: "e.g. batch",
+    keyLabel: "Key",
+    namePlaceholder: "e.g. Batch",
+  },
+  
+
 };
 
 export const ENTITY_KEYS = Object.keys(ENTITY_CONFIGS);
