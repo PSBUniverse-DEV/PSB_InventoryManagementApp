@@ -14,6 +14,7 @@ import {
   PackageCheck, Warehouse, Pencil, Trash2, Menu,
   LayoutDashboard, BarChart3, Package, Wrench,
   Truck, ClipboardList, Columns, Settings,
+  Layers,
 } from "lucide-react";
 import {
   Button, Card, Input, Modal, Badge, toastError, toastSuccess,
@@ -40,6 +41,7 @@ import {
   deleteSupplierAction,
 } from "../data/inventory.actions";
 import { useRouter } from "next/navigation";
+import MaterialFormModal from "./MaterialFormModal";
 
 // ─── SUB-COMPONENTS ─────────────────────────────────────────
 
@@ -74,6 +76,11 @@ export default function InventoryView({ initialData }) {
   const [modal, setModal] = useState(null);
   const [isBusy, setIsBusy] = useState(false);
   const [form, setForm] = useState({});
+
+  // MaterialFormModal state
+  const [showMaterialModal, setShowMaterialModal] = useState(false);
+  const [materialModalMode, setMaterialModalMode] = useState("create");
+  const [materialModalItem, setMaterialModalItem] = useState(null);
 
   useEffect(() => { setLoaded(true); }, []);
 
@@ -256,6 +263,10 @@ export default function InventoryView({ initialData }) {
       router.push("/inventory/transaction");
       return;
     }
+    if (viewId === "bom") {
+      router.push("/inventory/bom");
+      return;
+    }
     setView(viewId);
   }, [router]);
 
@@ -286,6 +297,107 @@ export default function InventoryView({ initialData }) {
     );
     closeModal();
   }, [form, data, runMutation, showToast, closeModal]);
+
+  // ─── MaterialFormModal save handler ─────────────────────────
+
+  const handleMaterialFormSave = useCallback(
+    async (savedMaterial) => {
+      try {
+        setIsBusy(true);
+
+        // Map category name → categoryId
+        const categories = data?.config?.categories || [];
+        const categoryObj = categories.find(
+          (c) => c.name === savedMaterial.category
+        );
+        const categoryId = categoryObj?.id || null;
+
+        // Map status name → statusId
+        const statuses = data?.config?.statuses || [];
+        const statusObj = statuses.find(
+          (s) => s.name === (savedMaterial.status || "Active")
+        );
+        const statusId = statusObj?.id || null;
+
+        // Use first warehouse row's warehouse as primary, or null
+        const primaryWhId =
+          savedMaterial.warehouseRows?.length > 0
+            ? Number(savedMaterial.warehouseRows[0].warehouseId)
+            : null;
+
+        const itemPayload = {
+          name: savedMaterial.name,
+          sku: savedMaterial.sku,
+          barcode: savedMaterial.barcode || null,
+          categoryId,
+          unitId: savedMaterial.unitId,
+          minThreshold: 0,
+          maxThreshold: 0,
+          reorderPoint: 0,
+          defaultReorderQty: 0,
+          cost: savedMaterial.lastPurchaseCost || 0,
+          warehouseId: primaryWhId,
+          statusId,
+          wholesalePrice: savedMaterial.sellingPrice || null,
+          retailPrice: null,
+          supplierId: savedMaterial.supplierId || null,
+          trackingTypeId: savedMaterial.trackingTypeId || null,
+          classification: "Material",
+        };
+
+        // Create the item
+        const createdItem = await createItemAction(itemPayload);
+
+        // Create stock levels for each warehouse row
+        if (savedMaterial.warehouseRows?.length > 0) {
+          for (const row of savedMaterial.warehouseRows) {
+            await createStockLevelAction({
+              itemId: createdItem.item_id || createdItem.id,
+              warehouseId: Number(row.warehouseId),
+              quantity: 0,
+              unitId: savedMaterial.unitId || null,
+            }).catch(() => {});
+          }
+        }
+
+        // Log transaction
+        const wh = (data?.warehouses || []).find(
+          (w) => String(w.id) === String(primaryWhId)
+        );
+        await logTransactionAction({
+          type: "Material added",
+          itemId: createdItem.item_id || createdItem.id,
+          itemName: savedMaterial.name,
+          sku: savedMaterial.sku,
+          warehouseId: primaryWhId,
+          warehouseName: wh?.name || "Unknown",
+          detail: "New material created via form",
+        }).catch(() => {});
+
+        refresh();
+        showToast(`"${savedMaterial.name}" added.`);
+        setShowMaterialModal(false);
+      } catch (err) {
+        showToast(err?.message || "Failed to create material.", "error");
+      } finally {
+        setIsBusy(false);
+      }
+    },
+    [data, refresh, showToast],
+  );
+
+  // ─── MaterialFormModal open/close helpers ───────────────────
+
+  const openMaterialModal = useCallback(() => {
+    setMaterialModalMode("create");
+    setMaterialModalItem(null);
+    setShowMaterialModal(true);
+  }, []);
+
+  const closeMaterialModal = useCallback(() => {
+    setShowMaterialModal(false);
+    setMaterialModalItem(null);
+  }, []);
 
   const handleRestock = useCallback(() => {
     const qty = Number(form.qty);
@@ -495,6 +607,7 @@ export default function InventoryView({ initialData }) {
             const iconMap = {
               LayoutDashboard, BarChart3, Package, Wrench,
               Warehouse, Truck, ArrowLeftRight, ClipboardList, Columns, Settings,
+              Layers,
             };
             const IconComponent = iconMap[n.icon];
             return (
@@ -602,15 +715,27 @@ export default function InventoryView({ initialData }) {
                 >
                   Refresh
                 </Button>
-                <Button
-                  type="button"
-                  variant="success"
-                  size="sm"
-                  onClick={() => openModal(view === "materials" ? "addMaterial" : "addEquipment")}
-                  disabled={isBusy}
-                >
-                  <Plus size={14} /> Add {view === "materials" ? "material" : "equipment"}
-                </Button>
+                {view === "materials" ? (
+                  <Button
+                    type="button"
+                    variant="success"
+                    size="sm"
+                    onClick={openMaterialModal}
+                    disabled={isBusy}
+                  >
+                    <Plus size={14} /> Add material
+                  </Button>
+                ) : (
+                  <Button
+                    type="button"
+                    variant="success"
+                    size="sm"
+                    onClick={() => openModal("addEquipment")}
+                    disabled={isBusy}
+                  >
+                    <Plus size={14} /> Add equipment
+                  </Button>
+                )}
               </div>
             </div>
 
@@ -1038,6 +1163,20 @@ export default function InventoryView({ initialData }) {
           </Field>
         )}
       </Modal>
+
+      {/* ─── Material Form Modal ──────────────────────────── */}
+      <MaterialFormModal
+        show={showMaterialModal}
+        onHide={closeMaterialModal}
+        mode={materialModalMode}
+        initialItem={materialModalItem}
+        config={data?.config}
+        warehouses={data?.warehouses || []}
+        suppliers={data?.suppliers || []}
+        allItems={data?.items || []}
+        stockLevels={data?.stockLevels || []}
+        onSave={handleMaterialFormSave}
+      />
     </div>
   );
 }
@@ -1295,7 +1434,6 @@ function WarehouseTable({ warehouses, items, config }) {
     />
   );
 }
-
 
 function SuppliersTable({ suppliers, onEdit, onDelete }) {
   const columns = [

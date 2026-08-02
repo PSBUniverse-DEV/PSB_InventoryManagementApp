@@ -11,13 +11,13 @@ import { isEntityActive } from "./inventoryHelpers.data";
 
 export const INVENTORY_VIEWS = [
   { id: "dashboard", label: "Dashboard", icon: "LayoutDashboard" },
-   { id: "transaction", label: "Transaction", icon: "ArrowLeftRight" },
+  // { id: "transaction", label: "Transaction", icon: "ArrowLeftRight" },
+  { id: "bom", label: "Bill of Materials", icon: "Layers" },
   { id: "stocklevels", label: "Stock levels", icon: "BarChart3" },
   { id: "materials", label: "Materials", icon: "Package" },
   { id: "equipment", label: "Equipment", icon: "Wrench" },
   { id: "warehouses", label: "Warehouse", icon: "Warehouse" },
   { id: "suppliers", label: "Suppliers", icon: "Truck" },
- 
   { id: "log", label: "Activity log", icon: "ClipboardList" },
   { id: "boards", label: "Boards", icon: "Columns" },
   { id: "boardSetup", label: "Board Setup", icon: "Settings" },

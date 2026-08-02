@@ -10,9 +10,9 @@ import "./InventoryView.css";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Plus, Pencil, Trash2, X, Check, GripVertical,
-  ListUl, Calendar, Envelope, Telephone, Link45deg,
-  CheckSquare, Type, TextParagraph, CurrencyDollar,
-  CalendarEvent, Menu,
+  List, Calendar, Mail, Phone, Link,
+  CheckSquare, Type, Text, DollarSign,
+  Menu,
   LayoutDashboard, BarChart3, Package, Wrench,
   Warehouse, Truck, ClipboardList, Columns, Settings,
 } from "lucide-react";
@@ -39,17 +39,17 @@ import { useRouter } from "next/navigation";
 
 const FIELD_ICONS = {
   text: Type,
-  textarea: TextParagraph,
-  number: ListUl,
-  currency: CurrencyDollar,
+  textarea: Text,
+  number: List,
+  currency: DollarSign,
   date: Calendar,
-  datetime: CalendarEvent,
+  datetime: Calendar,
   checkbox: CheckSquare,
-  select: ListUl,
-  multi_select: ListUl,
-  email: Envelope,
-  phone: Telephone,
-  url: Link45deg,
+  select: List,
+  multi_select: List,
+  email: Mail,
+  phone: Phone,
+  url: Link,
 };
 
 // ─── SUB-COMPONENTS: CELL RENDERERS ─────────────────────────

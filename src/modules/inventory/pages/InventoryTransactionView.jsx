@@ -12,7 +12,7 @@ import {
   Plus, Search, Check, X, Menu,
   LayoutDashboard, BarChart3, Package, Wrench,
   Warehouse, Truck, ClipboardList, Columns, Settings,
-  ArrowLeftRight, Hash, Calculator,
+  ArrowLeftRight, Hash, Calculator, Layers,
 } from "lucide-react";
 import {
   Button, Card, Input, Modal, Badge,
@@ -103,6 +103,10 @@ export default function InventoryTransactionView({ initialData }) {
     }
     if (viewId === "transaction") {
       // Already on transaction page — no-op
+      return;
+    }
+    if (viewId === "bom") {
+      router.push("/inventory/bom");
       return;
     }
     // Navigate back to main inventory for other views
@@ -320,9 +324,9 @@ export default function InventoryTransactionView({ initialData }) {
                   value={txType}
                   onChange={(e) => handleTxTypeChange(e.target.value)}
                 >
-                  {transactionTypes.map((t) => (
-                    <option key={t.id} value={t.id}>{t.name}</option>
-                  ))}
+                   {transactionTypes.map((t, idx) => (
+                     <option key={t.id ?? idx} value={t.id}>{t.name}</option>
+                   ))}
                 </select>
               </div>
               <div className="invoice-tx-toolbar-field invoice-tx-search-field">
