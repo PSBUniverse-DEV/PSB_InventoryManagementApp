@@ -10,9 +10,9 @@ import { loadInventoryData } from "../data/inventory.actions";
 export const dynamic = "force-dynamic";
 
 export default async function BomPage() {
-  const { items, warehouses, stockLevels, config } = await loadInventoryData();
+  const { items, warehouses, stockLevels,bomTemplates, config } = await loadInventoryData();
 
-  const initialData = { items, warehouses, stockLevels, config };
+  const initialData = { items, warehouses, stockLevels,bomTemplates, config };
 
   return <BomView initialData={initialData} />;
 }

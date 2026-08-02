@@ -18,12 +18,13 @@ export async function loadInventoryData() {
 
   // Operational tables may not exist yet; wrap each call so the page still
   // renders if a table is missing. Returns empty arrays as safe fallbacks.
-  const [itemsRes, warehousesRes, transactionsRes, stockLevelsRes, suppliersRes] = await Promise.all([
+  const [itemsRes, warehousesRes, transactionsRes, stockLevelsRes, suppliersRes, bomTemplateRes] = await Promise.all([
     safeQuery(() => supabase.from("inv_s_inventoryitem").select("*").order("name", { ascending: true })),
     safeQuery(() => supabase.from("inv_s_warehouse").select("*").order("name", { ascending: true })),
     safeQuery(() => supabase.from("inv_t_activitylog").select("*").order("created_at", { ascending: false }).limit(200)),
     safeQuery(() => supabase.from("inv_t_stockslevels").select("*").order("created_at", { ascending: false })),
     safeQuery(() => supabase.from("inv_s_supplier").select("*").order("name", { ascending: true })),
+    safeQuery(() => supabase.from("inv_s_bom_template").select("*").order("project_name", { ascending: true })),
   ]);
 
   // Compute quantity per item by aggregating stock levels
@@ -49,6 +50,7 @@ export async function loadInventoryData() {
     transactions: (transactionsRes ?? []).map((r) => ({ ...r, id: r.id ?? r.transaction_id, type: r.transaction_type ?? r.type })),
     stockLevels: (stockLevelsRes ?? []).map((r) => ({ ...r, id: r.id ?? r.stocklevel_id })),
     suppliers: (suppliersRes ?? []).map((r) => ({ ...r, id: r.id ?? r.supplier_id })),
+    bomTemplates: (bomTemplateRes ?? []).map((r) => ({ ...r, id: r.id ?? r.bom_temp_id })),
   };
 }
 
@@ -361,6 +363,22 @@ export async function deleteSupplierAction(id) {
   const supabase = getSupabaseAdmin();
   const { error } = await supabase.from("inv_s_supplier").delete().eq("supplier_id", id);
   if (error) throw new Error(`Failed to delete supplier: ${error.message}`);
+}
+
+//#endregion
+
+//#region ─── BOM TEMPLATE DETAILS ─────────────────────────────────
+
+export async function loadBomTemplateDetailsAction(bomTempId) {
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from("inv_s_bom_details_template")
+    .select("*, inv_s_inventoryitem(sku, name)")
+    .eq("bom_temp_id", bomTempId)
+    .order("bom_detial_id", { ascending: true });
+
+  if (error) throw new Error(`Failed to load BOM template details: ${error.message}`);
+  return data ?? [];
 }
 
 //#endregion

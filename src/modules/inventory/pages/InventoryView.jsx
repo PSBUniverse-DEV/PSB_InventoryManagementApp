@@ -498,6 +498,20 @@ export default function InventoryView({ initialData }) {
     );
   }, [runMutation, whName]);
 
+  const handleDeleteMaterial = useCallback((item) => {
+    runMutation(
+      () => deleteItemAction(item.id),
+      { type: "Delete", itemId: item.id, itemName: item.name, sku: item.sku, warehouseId: item.warehouse_id, warehouseName: whName(item.warehouse_id), detail: `Permanently deleted "${item.name}"` },
+    );
+  }, [runMutation, whName]);
+
+  const handleDeactivateMaterial = useCallback((item) => {
+    runMutation(
+      () => updateItemAction(item.id, { isActive: false }),
+      { type: "Deactivate", itemId: item.id, itemName: item.name, sku: item.sku, warehouseId: item.warehouse_id, warehouseName: whName(item.warehouse_id), detail: `Deactivated "${item.name}"` },
+    );
+  }, [runMutation, whName]);
+
   const handleCheckin = useCallback((item) => {
     runMutation(
       () => updateItemAction(item.id, { statusId: statusIdByName("Available") }),
@@ -747,6 +761,8 @@ export default function InventoryView({ initialData }) {
                 onEdit={(item) => openModal("editItem", item)}
                 onRestock={(item) => openModal("restock", item)}
                 onTransfer={(item) => openModal("transfer", item)}
+                onDeactivate={handleDeactivateMaterial}
+                onDelete={handleDeleteMaterial}
               />
             )}
 
@@ -1185,7 +1201,7 @@ export default function InventoryView({ initialData }) {
 
 //#region ─── SUB-COMPONENTS ─────────────────────────────────────────
 
-function MaterialsTable({ materials, warehouseName, config, onRestock, onTransfer, onEdit }) {
+function MaterialsTable({ materials, warehouseName, config, onRestock, onTransfer, onEdit, onDelete, onDeactivate }) {
   const catLookup = useMemo(() => {
     const map = {};
     (config?.categories || []).forEach((c) => { map[String(c.id)] = c.name; });
@@ -1207,36 +1223,36 @@ function MaterialsTable({ materials, warehouseName, config, onRestock, onTransfe
   const columns = [
     { key: "name", label: "Name", sortable: true, render: (row) => <span className="fw-semibold">{row.name}</span> },
     { key: "sku", label: "SKU", sortable: true, render: (row) => <span className="inventory-mono text-muted">{row.sku}</span> },
-    { key: "barcode", label: "Barcode", sortable: true, render: (row) => <span className="inventory-mono small">{row.barcode || "—"}</span> },
-    { key: "description", label: "Description", sortable: true, render: (row) => <span className="text-muted small">{row.description || "—"}</span> },
+    { key: "barcode", label: "Barcode", sortable: true, defaultVisible: false, render: (row) => <span className="inventory-mono small">{row.barcode || "—"}</span> },
+    { key: "description", label: "Description", sortable: true, defaultVisible: false, render: (row) => <span className="text-muted small">{row.description || "—"}</span> },
     { key: "classification", label: "Classification", sortable: true, render: (row) => <span>{row.classification || "—"}</span> },
-    { key: "tracking", label: "Tracking", sortable: true, align: "center", render: (row) => <span className="text-muted small">{trackingLookup[String(row.tracking_type_id)] || "—"}</span> },
+    { key: "tracking", label: "Tracking", sortable: true, align: "center", defaultVisible: false, render: (row) => <span className="text-muted small">{trackingLookup[String(row.tracking_type_id)] || "—"}</span> },
     { key: "unit", label: "UoM", sortable: true, align: "center", render: (row) => {
       const u = uLookup[String(row.unit_id)];
       const text = u ? u.abbreviation : (row.unit || "—");
       return <span className="inventory-mono">{text}</span>;
     }},
     { key: "quantity", label: "Qty", sortable: true, align: "center", render: (row) => <span className="inventory-mono">{row.quantity}</span> },
-    { key: "minThreshold", label: "Min Stock", sortable: true, align: "center", render: (row) => <span className="inventory-mono text-muted">{row.min_threshold}</span> },
-    { key: "maxThreshold", label: "Max Stock", sortable: true, align: "center", render: (row) => <span className="inventory-mono text-muted">{row.max_threshold || 0}</span> },
-    { key: "reorderPoint", label: "Reorder Pt", sortable: true, align: "center", render: (row) => <span className="inventory-mono text-muted">{row.reorder_point || 0}</span> },
-    { key: "defaultReorderQty", label: "Reorder Qty", sortable: true, align: "center", render: (row) => <span className="inventory-mono text-muted">{row.default_reorder_quantity || 0}</span> },
-    { key: "dimensions", label: "Dimensions", sortable: false, align: "center", render: (row) => {
+    { key: "minThreshold", label: "Min Stock", sortable: true, align: "center", defaultVisible: false, render: (row) => <span className="inventory-mono text-muted">{row.min_threshold}</span> },
+    { key: "maxThreshold", label: "Max Stock", sortable: true, align: "center", defaultVisible: false, render: (row) => <span className="inventory-mono text-muted">{row.max_threshold || 0}</span> },
+    { key: "reorderPoint", label: "Reorder Pt", sortable: true, align: "center", defaultVisible: false, render: (row) => <span className="inventory-mono text-muted">{row.reorder_point || 0}</span> },
+    { key: "defaultReorderQty", label: "Reorder Qty", sortable: true, align: "center", defaultVisible: false, render: (row) => <span className="inventory-mono text-muted">{row.default_reorder_quantity || 0}</span> },
+    { key: "dimensions", label: "Dimensions", sortable: false, align: "center", defaultVisible: false, render: (row) => {
       const dims = [row.length, row.width, row.height].filter(Boolean);
       return <span className="text-muted small">{dims.length ? dims.join(" × ") : "—"}</span>;
     }},
-    { key: "weight", label: "Weight", sortable: true, align: "center", render: (row) => <span className="text-muted small">{row.weight || "—"}</span> },
-    { key: "color", label: "Color", sortable: true, align: "center", render: (row) => <span className="text-muted small">{row.color || "—"}</span> },
-    { key: "gauge", label: "Gauge", sortable: true, align: "center", render: (row) => <span className="text-muted small">{row.gauge || "—"}</span> },
-    { key: "specification", label: "Spec", sortable: true, render: (row) => {
+    { key: "weight", label: "Weight", sortable: true, align: "center", defaultVisible: false, render: (row) => <span className="text-muted small">{row.weight || "—"}</span> },
+    { key: "color", label: "Color", sortable: true, align: "center", defaultVisible: false, render: (row) => <span className="text-muted small">{row.color || "—"}</span> },
+    { key: "gauge", label: "Gauge", sortable: true, align: "center", defaultVisible: false, render: (row) => <span className="text-muted small">{row.gauge || "—"}</span> },
+    { key: "specification", label: "Spec", sortable: true, defaultVisible: false, render: (row) => {
       const spec = row.specification;
       if (!spec) return <span className="text-muted small">—</span>;
       if (typeof spec === "object") return <span className="text-muted small">{spec.value || JSON.stringify(spec)}</span>;
       return <span className="text-muted small">{spec}</span>;
     }},
     { key: "cost", label: "Cost ($)", sortable: true, align: "right", render: (row) => row.cost ? <span className="inventory-mono">${Number(row.cost).toFixed(2)}</span> : <span className="text-muted">—</span> },
-    { key: "wholesale", label: "Wholesale ($)", sortable: true, align: "right", render: (row) => row.wholesale_price ? <span className="inventory-mono">${Number(row.wholesale_price).toFixed(2)}</span> : <span className="text-muted">—</span> },
-    { key: "retail", label: "Retail ($)", sortable: true, align: "right", render: (row) => row.retail_price ? <span className="inventory-mono">${Number(row.retail_price).toFixed(2)}</span> : <span className="text-muted">—</span> },
+    { key: "wholesale", label: "Wholesale ($)", sortable: true, align: "right", defaultVisible: false, render: (row) => row.wholesale_price ? <span className="inventory-mono">${Number(row.wholesale_price).toFixed(2)}</span> : <span className="text-muted">—</span> },
+    { key: "retail", label: "Retail ($)", sortable: true, align: "right", defaultVisible: false, render: (row) => row.retail_price ? <span className="inventory-mono">${Number(row.retail_price).toFixed(2)}</span> : <span className="text-muted">—</span> },
     {
       key: "isActive", label: "Active", sortable: true, align: "center",
       render: (row) => row.is_active !== false
@@ -1249,6 +1265,24 @@ function MaterialsTable({ materials, warehouseName, config, onRestock, onTransfe
     { key: "edit", label: "Edit", type: "secondary", icon: "edit", onClick: (r) => onEdit(r) },
     { key: "restock", label: "Restock", type: "secondary", icon: "plus", onClick: (r) => onRestock(r) },
     { key: "transfer", label: "Transfer", type: "secondary", icon: "right-to-bracket", onClick: (r) => onTransfer(r) },
+    {
+      key: "deactivate",
+      label: "Deactivate",
+      type: "secondary",
+      icon: "x-circle",
+      confirm: true,
+      confirmMessage: (row) => `Deactivate "${row.name}"? This will set it to inactive.`,
+      onClick: (r) => onDeactivate(r),
+    },
+    {
+      key: "delete",
+      label: "Delete",
+      type: "danger",
+      icon: "trash",
+      confirm: true,
+      confirmMessage: (row) => `Permanently delete "${row.name}"? This cannot be undone.`,
+      onClick: (r) => onDelete(r),
+    },
   ];
 
   return (

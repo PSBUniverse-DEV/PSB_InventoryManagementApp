@@ -20,6 +20,7 @@ import {
 } from "@/shared/components/ui";
 import { useRouter } from "next/navigation";
 import { INVENTORY_VIEWS } from "../data/inventory.data";
+import { loadBomTemplateDetailsAction } from "../data/inventory.actions";
 
 // ─── SUB-COMPONENTS ─────────────────────────────────────────
 
@@ -40,16 +41,6 @@ function StatCard({ label, value, accent, danger }) {
     </Card>
   );
 }
-
-// ─── MOCK TEMPLATES (until DB table exists) ──────────────────
-
-const MOCK_TEMPLATES = [
-  { id: 1, name: "AFV 24' × 50' 14G — Standard", spec: "AFV 24×50 14G" },
-  { id: 2, name: "AFV 30' × 60' 14G — Standard", spec: "AFV 30×60 14G" },
-  { id: 3, name: "AFV 24' × 40' 12G — Heavy", spec: "AFV 24×40 12G" },
-  { id: 4, name: "RV Carport 18' × 36' 14G — Standard", spec: "RV 18×36 14G" },
-  { id: 5, name: "Utility 12' × 20' 14G — Economy", spec: "UTIL 12×20 14G" },
-];
 
 // ─── MOCK PROJECTS ──────────────────────────────────────────
 
@@ -85,6 +76,7 @@ export default function BomView({ initialData }) {
   const items = data?.items || [];
   const allWarehouses = data?.warehouses || [];
   const stockLevels = data?.stockLevels || [];
+  const bomTemplates = data?.bomTemplates || [];
 
   // ─── BOM state ──────────────────────────────────────────────
 
@@ -176,39 +168,60 @@ export default function BomView({ initialData }) {
     [stockLevels],
   );
 
+  // ─── Normalize DB templates into shape expected by dropdown ──
+
+  const templates = useMemo(
+    () =>
+      (bomTemplates || []).map((t) => ({
+        id: t.id,
+        name: t.project_name || t.name || "",
+        spec: t.spec || "",
+      })),
+    [bomTemplates],
+  );
+
   // ─── Template search filtering ──────────────────────────────
 
   const filteredTemplates = useMemo(() => {
     const q = (templateSearch || "").trim().toLowerCase();
-    if (!q) return MOCK_TEMPLATES;
-    return MOCK_TEMPLATES.filter(
+    if (!q) return templates;
+    return templates.filter(
       (t) =>
         t.name.toLowerCase().includes(q) ||
         t.spec.toLowerCase().includes(q),
     );
-  }, [templateSearch]);
+  }, [templateSearch, templates]);
 
-  const handleLoadTemplate = useCallback(() => {
+  const handleLoadTemplate = useCallback(async () => {
     if (!selectedTemplate) {
       toastError("Please select a template first.");
       return;
     }
-    // Generate mock line items from template (until DB-backed)
-    const mockLines = [
-      { id: Date.now() + 1, sku: "PNL-RF-1426", name: "Roof Panel 14G 26\"", requiredQty: 24, warehouseId: assignedWarehouse },
-      { id: Date.now() + 2, sku: "PNL-WL-1410", name: "Wall Panel 14G 10'", requiredQty: 32, warehouseId: assignedWarehouse },
-      { id: Date.now() + 3, sku: "LEG-ADJ-14G", name: "Adjustable Leg 14G", requiredQty: 12, warehouseId: assignedWarehouse },
-      { id: Date.now() + 4, sku: "TRS-24-14G", name: "Truss 24' 14G", requiredQty: 8, warehouseId: assignedWarehouse },
-      { id: Date.now() + 5, sku: "FST-TEK-14", name: "TEK Screws #14 × 1\"", requiredQty: 500, warehouseId: assignedWarehouse },
-      { id: Date.now() + 6, sku: "FST-LAG-38", name: "Lag Bolts 3/8\" × 3\"", requiredQty: 48, warehouseId: assignedWarehouse },
-      { id: Date.now() + 7, sku: "ANG-WND-3x3", name: "Angle Trim 3\" × 3\"", requiredQty: 16, warehouseId: assignedWarehouse },
-    ];
-    setLineItems(mockLines);
-    setTemplateSearch("");
-    setTemplateDropdownOpen(false);
-    setSelectedTemplate(null);
-    toastSuccess(`Template "${MOCK_TEMPLATES.find((t) => t.id === selectedTemplate)?.name}" loaded.`);
-  }, [selectedTemplate, assignedWarehouse]);
+    try {
+      const details = await loadBomTemplateDetailsAction(selectedTemplate);
+      if (!details || details.length === 0) {
+        toastError("No line items found for the selected template.");
+        return;
+      }
+      // details rows from inv_s_bom_details_template joined with inv_s_inventoryitem
+      // Columns: bom_detial_id, created_at, item_id, required_qty, bom_temp_id, inv_s_inventoryitem: { sku, name }
+      const lines = details.map((d, idx) => ({
+        id: Date.now() + idx,
+        sku: d.inv_s_inventoryitem?.sku || "",
+        name: d.inv_s_inventoryitem?.name || "",
+        requiredQty: Number(d.required_qty) || 1,
+        warehouseId: assignedWarehouse,
+      }));
+      setLineItems(lines);
+      setTemplateSearch("");
+      setTemplateDropdownOpen(false);
+      setSelectedTemplate(null);
+      toastSuccess(`Template "${templates.find((t) => t.id === selectedTemplate)?.name}" loaded.`);
+    } catch (err) {
+      toastError("Failed to load template details.");
+      console.error(err);
+    }
+  }, [selectedTemplate, assignedWarehouse, templates]);
 
   // ─── Line item helpers ──────────────────────────────────────
 
@@ -285,6 +298,7 @@ export default function BomView({ initialData }) {
     const title = `${createForm.buildingSpec} ${createForm.size} ${createForm.gauge}`;
     setProjectTitle(title);
     // Pre-fill structural items that scale with size
+    
     const structuralLines = [
       { id: Date.now() + 1, sku: "PNL-RF-1426", name: "Roof Panel 14G 26\"", requiredQty: 24, warehouseId: assignedWarehouse },
       { id: Date.now() + 2, sku: "PNL-WL-1410", name: "Wall Panel 14G 10'", requiredQty: 32, warehouseId: assignedWarehouse },
@@ -377,7 +391,7 @@ export default function BomView({ initialData }) {
                 <option value="">Select warehouse</option>
                 {allWarehouses.map((w) => (
                   <option key={w.id} value={String(w.id)}>{w.name}</option>
-                ))}
+                ))} 
               </select>
             </div>
           </div>
