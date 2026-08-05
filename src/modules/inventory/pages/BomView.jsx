@@ -12,8 +12,8 @@ import {
   Plus, Search, X, Menu,
   LayoutDashboard, BarChart3, Package, Wrench,
   Warehouse, Truck, ClipboardList, Columns, Settings,
-  ArrowLeftRight, FileText, Download, Save, Clipboard, AlertTriangle,
-  Hash, DollarSign, PackageCheck, Layers,
+  ArrowLeftRight, FileText, Download, Save, AlertTriangle,
+  PackageCheck, Layers,
 } from "lucide-react";
 import {
   Button, Card, Input, Badge, toastSuccess, toastError,
@@ -65,7 +65,7 @@ function LineStatusBadge({ required, available }) {
 
 //#region ─── MAIN VIEW ──────────────────────────────────────────────
 
-export default function BomView({ initialData }) {
+export default function BomView({ initialData, hideSidebar = false }) {
   const router = useRouter();
   const data = initialData;
   const [loaded, setLoaded] = useState(false);
@@ -203,8 +203,6 @@ export default function BomView({ initialData }) {
         toastError("No line items found for the selected template.");
         return;
       }
-      // details rows from inv_s_bom_details_template joined with inv_s_inventoryitem
-      // Columns: bom_detial_id, created_at, item_id, required_qty, bom_temp_id, inv_s_inventoryitem: { sku, name }
       const lines = details.map((d, idx) => ({
         id: Date.now() + idx,
         sku: d.inv_s_inventoryitem?.sku || "",
@@ -297,8 +295,6 @@ export default function BomView({ initialData }) {
     }
     const title = `${createForm.buildingSpec} ${createForm.size} ${createForm.gauge}`;
     setProjectTitle(title);
-    // Pre-fill structural items that scale with size
-    
     const structuralLines = [
       { id: Date.now() + 1, sku: "PNL-RF-1426", name: "Roof Panel 14G 26\"", requiredQty: 24, warehouseId: assignedWarehouse },
       { id: Date.now() + 2, sku: "PNL-WL-1410", name: "Wall Panel 14G 10'", requiredQty: 32, warehouseId: assignedWarehouse },
@@ -317,16 +313,350 @@ export default function BomView({ initialData }) {
 
   //#endregion
 
+  // --- BOM content (shared between standalone and embedded) ---
+  const bomContent = (
+    <div>
+      {/* ═══ PAGE HEADER ═══ */}
+      <div className="bom-page-header">
+        <div className="bom-header-left">
+          <div className="bom-header-meta">
+            <span className="bom-header-meta-label">Assigned warehouse:</span>
+            <select
+              className="form-select bom-warehouse-select"
+              value={assignedWarehouse}
+              onChange={(e) => setAssignedWarehouse(e.target.value)}
+            >
+              <option value="">Select warehouse</option>
+              {allWarehouses.map((w) => (
+                <option key={w.id} value={String(w.id)}>{w.name}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+        <div className="bom-header-actions">
+          <Button
+            type="button"
+            variant="outline-primary"
+            size="sm"
+            onClick={handleExport}
+            disabled={lineItems.length === 0}
+          >
+            <Download size={14} /> Export
+          </Button>
+          <Button
+            type="button"
+            variant="outline-primary"
+            size="sm"
+            onClick={handleSaveAsTemplate}
+            disabled={lineItems.length === 0}
+          >
+            <Save size={14} /> Save as template
+          </Button>
+        </div>
+      </div>
+
+      {/* ═══ TWO PATHS — Load template OR Create new BOM ═══ */}
+      <div className="bom-entry-section">
+        {/* Path A — Load template */}
+        <div className="bom-entry-card">
+          <div className="bom-entry-card-header">
+            <FileText size={18} />
+            <span>Load a predefined template</span>
+          </div>
+          <div className="bom-entry-card-body">
+            <div className="bom-template-search-wrap">
+              <Search size={16} className="bom-template-search-icon" />
+              <input
+                type="text"
+                className="form-control bom-template-search-input"
+                placeholder='Search templates, e.g. "AFV 24×50 14G"'
+                value={templateSearch}
+                onChange={(e) => {
+                  setTemplateSearch(e.target.value);
+                  setTemplateDropdownOpen(e.target.value.trim().length > 0);
+                  setSelectedTemplate(null);
+                }}
+                onFocus={() => {
+                  if (templateSearch.trim().length > 0) setTemplateDropdownOpen(true);
+                }}
+              />
+              {templateDropdownOpen && filteredTemplates.length > 0 && (
+                <ul className="bom-template-dropdown">
+                  {filteredTemplates.map((t) => (
+                    <li
+                      key={t.id}
+                      className={`bom-template-dropdown-item${selectedTemplate === t.id ? " is-selected" : ""}`}
+                      onClick={() => {
+                        setSelectedTemplate(t.id);
+                        setTemplateSearch(t.name);
+                        setTemplateDropdownOpen(false);
+                      }}
+                    >
+                      <span className="bom-template-dd-name">{t.name}</span>
+                      <span className="bom-template-dd-spec">{t.spec}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+            <Button
+              type="button"
+              variant="success"
+              size="sm"
+              className="bom-entry-btn"
+              onClick={handleLoadTemplate}
+            >
+              <Layers size={14} /> Load template
+            </Button>
+          </div>
+        </div>
+
+        {/* "Or" divider */}
+        <div className="bom-or-divider">
+          <span className="bom-or-divider-text">or</span>
+        </div>
+
+        {/* Path B — Create new BOM */}
+        <div className="bom-entry-card">
+          <div className="bom-entry-card-header">
+            <Plus size={18} />
+            <span>Create new BOM</span>
+          </div>
+          <div className="bom-entry-card-body">
+            {!showCreateForm ? (
+              <Button
+                type="button"
+                variant="primary"
+                size="sm"
+                className="bom-entry-btn"
+                onClick={() => setShowCreateForm(true)}
+              >
+                <Plus size={14} /> Create new BOM
+              </Button>
+            ) : (
+              <div className="bom-create-form">
+                <Field label="Building spec">
+                  <Input
+                    value={createForm.buildingSpec}
+                    onChange={(e) => setCreateForm({ ...createForm, buildingSpec: e.target.value })}
+                    placeholder='e.g. AFV, RV Carport, Utility'
+                  />
+                </Field>
+                <Field label="Size">
+                  <Input
+                    value={createForm.size}
+                    onChange={(e) => setCreateForm({ ...createForm, size: e.target.value })}
+                    placeholder="e.g. 24' × 50'"
+                  />
+                </Field>
+                <Field label="Gauge">
+                  <select
+                    className="form-select"
+                    value={createForm.gauge}
+                    onChange={(e) => setCreateForm({ ...createForm, gauge: e.target.value })}
+                  >
+                    <option value="">Select gauge</option>
+                    <option value="14G">14 Gauge</option>
+                    <option value="12G">12 Gauge</option>
+                    <option value="16G">16 Gauge</option>
+                  </select>
+                </Field>
+                <div style={{ display: "flex", gap: "0.5rem" }}>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setShowCreateForm(false)}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="success"
+                    size="sm"
+                    onClick={handleCreateNewBom}
+                  >
+                    Create BOM
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* ═══ SUMMARY METRICS ═══ */}
+      <div className="bom-stat-row">
+        <StatCard label="Line items" value={metrics.lineCount} />
+        <StatCard label="Est. material cost" value={`$${metrics.estMaterialCost.toFixed(2)}`} />
+        <StatCard label="Items short" value={metrics.itemsShort} danger={metrics.itemsShort > 0} />
+      </div>
+
+      {/* ═══ LINE-ITEM TABLE ═══ */}
+      <Card className="bom-table-card">
+        <div className="bom-table-toolbar">
+          <span className="bom-table-title">Line items</span>
+          <Button
+            type="button"
+            variant="outline-primary"
+            size="sm"
+            onClick={() => setShowAddItemRow((prev) => !prev)}
+          >
+            <Plus size={14} /> Add item
+          </Button>
+        </div>
+
+        {showAddItemRow && (
+          <div className="bom-add-item-row">
+            <input
+              type="text"
+              className="form-control form-control-sm"
+              placeholder="SKU"
+              value={newItemForm.sku}
+              onChange={(e) => setNewItemForm({ ...newItemForm, sku: e.target.value })}
+            />
+            <input
+              type="text"
+              className="form-control form-control-sm bom-add-item-name"
+              placeholder="Item name"
+              value={newItemForm.name}
+              onChange={(e) => setNewItemForm({ ...newItemForm, name: e.target.value })}
+            />
+            <input
+              type="number"
+              className="form-control form-control-sm bom-add-item-qty"
+              placeholder="Qty"
+              min={1}
+              value={newItemForm.requiredQty}
+              onChange={(e) => setNewItemForm({ ...newItemForm, requiredQty: e.target.value })}
+            />
+            <select
+              className="form-select form-select-sm bom-add-item-wh"
+              value={newItemForm.warehouseId}
+              onChange={(e) => setNewItemForm({ ...newItemForm, warehouseId: e.target.value })}
+            >
+              <option value="">Warehouse</option>
+              {allWarehouses.map((w) => (
+                <option key={w.id} value={String(w.id)}>{w.name}</option>
+              ))}
+            </select>
+            <Button type="button" variant="success" size="sm" onClick={addLineItem}>Add</Button>
+            <Button type="button" variant="ghost" size="sm" onClick={() => setShowAddItemRow(false)}>
+              <X size={14} />
+            </Button>
+          </div>
+        )}
+
+        <div className="bom-table-wrap">
+          <table className="bom-table">
+            <thead>
+              <tr>
+                <th>Item / SKU</th>
+                <th className="bom-col-num">Required</th>
+                <th className="bom-col-num">Available</th>
+                <th>Warehouse</th>
+                <th className="bom-col-status">Status</th>
+                <th className="bom-col-action"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {lineItems.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="bom-table-empty">
+                    No line items yet. Load a template, create a new BOM, or add items manually.
+                  </td>
+                </tr>
+              )}
+              {lineItems.map((item) => {
+                const dbItem = items.find((i) => String(i.sku) === String(item.sku));
+                const available = dbItem ? getAvailableQty(dbItem.id, item.warehouseId) : 0;
+                return (
+                  <tr key={item.id}>
+                    <td>
+                      <div className="bom-item-name">{item.name || "—"}</div>
+                      <div className="bom-item-sku">{item.sku || "—"}</div>
+                    </td>
+                    <td className="bom-col-num">
+                      <input
+                        type="number"
+                        className="form-control form-control-sm bom-input-num"
+                        value={item.requiredQty}
+                        onChange={(e) => updateLineItem(item.id, "requiredQty", e.target.value)}
+                        min={0}
+                      />
+                    </td>
+                    <td className="bom-col-num bom-available-cell">
+                      <span className={available < (Number(item.requiredQty) || 0) ? "bom-short" : ""}>
+                        {available}
+                      </span>
+                    </td>
+                    <td>
+                      <select
+                        className="form-select form-select-sm bom-wh-select"
+                        value={item.warehouseId || ""}
+                        onChange={(e) => updateLineItem(item.id, "warehouseId", e.target.value)}
+                      >
+                        <option value="">—</option>
+                        {allWarehouses.map((w) => (
+                          <option key={w.id} value={String(w.id)}>{w.name}</option>
+                        ))}
+                      </select>
+                    </td>
+                    <td className="bom-col-status">
+                      <LineStatusBadge required={Number(item.requiredQty) || 0} available={available} />
+                    </td>
+                    <td className="bom-col-action">
+                      <button
+                        type="button"
+                        className="bom-remove-btn"
+                        onClick={() => removeLineItem(item.id)}
+                        title="Remove line"
+                      >
+                        <X size={14} />
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+
+      {/* ═══ ALLOCATE STOCK ═══ */}
+      <div className="bom-allocate-section">
+        <Button
+          type="button"
+          variant="success"
+          className="bom-allocate-btn"
+          onClick={handleAllocateStock}
+          disabled={lineItems.length === 0}
+        >
+          <PackageCheck size={18} /> Allocate stock
+        </Button>
+        {metrics.itemsShort > 0 && lineItems.length > 0 && (
+          <div className="bom-short-warning">
+            <AlertTriangle size={14} />
+            <span>{metrics.itemsShort} item(s) are short — review before allocating.</span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
+  // --- Embedded mode: no sidebar, no layout wrapper ---
+  if (hideSidebar) {
+    return bomContent;
+  }
+
+  // --- Standalone: full layout with sidebar ---
   return (
     <div className="inventory-module-layout">
-      {/* Drawer overlay (mobile only) */}
       <div
         className={`inventory-drawer-overlay${drawerOpen ? " is-open" : ""}`}
         onClick={() => setDrawerOpen(false)}
         aria-hidden="true"
       />
-
-      {/* Drawer sidebar */}
       <aside className={`inventory-sidebar${drawerOpen ? " is-open" : ""}`}>
         <div className="inventory-sidebar-brand">
           <button
@@ -363,8 +693,6 @@ export default function BomView({ initialData }) {
           })}
         </nav>
       </aside>
-
-      {/* Main content */}
       <main className="inventory-main">
         <button
           className="inventory-drawer-toggle-mobile"
@@ -373,376 +701,7 @@ export default function BomView({ initialData }) {
         >
           <Menu size={20} />
         </button>
-
-        {/* ════════════════════════════════════════════════════════
-            PAGE HEADER
-            ════════════════════════════════════════════════════════ */}
-        <div className="bom-page-header">
-          <div className="bom-header-left">
-            {/* <div className="bom-project-id">Project #{projectId}</div>
-            <h1 className="bom-project-title">{projectTitle || "New BOM"}</h1> */}
-            <div className="bom-header-meta">
-              <span className="bom-header-meta-label">Assigned warehouse:</span>
-              <select
-                className="form-select bom-warehouse-select"
-                value={assignedWarehouse}
-                onChange={(e) => setAssignedWarehouse(e.target.value)}
-              >
-                <option value="">Select warehouse</option>
-                {allWarehouses.map((w) => (
-                  <option key={w.id} value={String(w.id)}>{w.name}</option>
-                ))} 
-              </select>
-            </div>
-          </div>
-          <div className="bom-header-actions">
-            <Button
-              type="button"
-              variant="outline-primary"
-              size="sm"
-              onClick={handleExport}
-              disabled={lineItems.length === 0}
-            >
-              <Download size={14} /> Export
-            </Button>
-            <Button
-              type="button"
-              variant="outline-primary"
-              size="sm"
-              onClick={handleSaveAsTemplate}
-              disabled={lineItems.length === 0}
-            >
-              <Save size={14} /> Save as template
-            </Button>
-          </div>
-        </div>
-
-        {/* ════════════════════════════════════════════════════════
-            TWO PATHS — Load template OR Create new BOM
-            ════════════════════════════════════════════════════════ */}
-        <div className="bom-entry-section">
-          {/* Path A — Load template */}
-          <div className="bom-entry-card">
-            <div className="bom-entry-card-header">
-              <FileText size={18} />
-              <span>Load a predefined template</span>
-            </div>
-            <div className="bom-entry-card-body">
-              <div className="bom-template-search-wrap">
-                <Search size={16} className="bom-template-search-icon" />
-                <input
-                  type="text"
-                  className="form-control bom-template-search-input"
-                  placeholder='Search templates, e.g. "AFV 24×50 14G"'
-                  value={templateSearch}
-                  onChange={(e) => {
-                    setTemplateSearch(e.target.value);
-                    setTemplateDropdownOpen(e.target.value.trim().length > 0);
-                    setSelectedTemplate(null);
-                  }}
-                  onFocus={() => {
-                    if (templateSearch.trim().length > 0) setTemplateDropdownOpen(true);
-                  }}
-                />
-                {templateDropdownOpen && filteredTemplates.length > 0 && (
-                  <ul className="bom-template-dropdown">
-                    {filteredTemplates.map((t) => (
-                      <li
-                        key={t.id}
-                        className={`bom-template-dropdown-item${selectedTemplate === t.id ? " is-selected" : ""}`}
-                        onClick={() => {
-                          setSelectedTemplate(t.id);
-                          setTemplateSearch(t.name);
-                          setTemplateDropdownOpen(false);
-                        }}
-                      >
-                        <span className="bom-template-dd-name">{t.name}</span>
-                        <span className="bom-template-dd-spec">{t.spec}</span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-              <Button
-                type="button"
-                variant="success"
-                size="sm"
-                className="bom-entry-btn"
-                onClick={handleLoadTemplate}
-              >
-                <Layers size={14} /> Load template
-              </Button>
-            </div>
-          </div>
-
-          {/* "Or" divider */}
-          <div className="bom-or-divider">
-            <span className="bom-or-divider-text">or</span>
-          </div>
-
-          {/* Path B — Create new BOM */}
-          <div className="bom-entry-card">
-            <div className="bom-entry-card-header">
-              <Plus size={18} />
-              <span>Create new BOM</span>
-            </div>
-            <div className="bom-entry-card-body">
-              {!showCreateForm ? (
-                <Button
-                  type="button"
-                  variant="primary"
-                  size="sm"
-                  className="bom-entry-btn"
-                  onClick={() => setShowCreateForm(true)}
-                >
-                  <Plus size={14} /> Create new BOM
-                </Button>
-              ) : (
-                <div className="bom-create-form">
-                  <Field label="Building spec">
-                    <Input
-                      value={createForm.buildingSpec}
-                      onChange={(e) => setCreateForm({ ...createForm, buildingSpec: e.target.value })}
-                      placeholder='e.g. AFV, RV Carport, Utility'
-                    />
-                  </Field>
-                  <Field label="Size">
-                    <Input
-                      value={createForm.size}
-                      onChange={(e) => setCreateForm({ ...createForm, size: e.target.value })}
-                      placeholder="e.g. 24' × 50'"
-                    />
-                  </Field>
-                  <Field label="Gauge">
-                    <select
-                      className="form-select"
-                      value={createForm.gauge}
-                      onChange={(e) => setCreateForm({ ...createForm, gauge: e.target.value })}
-                    >
-                      <option value="">Select gauge</option>
-                      <option value="14G">14 Gauge</option>
-                      <option value="12G">12 Gauge</option>
-                      <option value="16G">16 Gauge</option>
-                    </select>
-                  </Field>
-                  <div style={{ display: "flex", gap: "0.5rem" }}>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setShowCreateForm(false)}
-                    >
-                      Cancel
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="success"
-                      size="sm"
-                      onClick={handleCreateNewBom}
-                    >
-                      Create BOM
-                    </Button>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* ════════════════════════════════════════════════════════
-            SUMMARY METRICS
-            ════════════════════════════════════════════════════════ */}
-        <div className="bom-stat-row">
-          <StatCard
-            label="Line items"
-            value={metrics.lineCount}
-          />
-          <StatCard
-            label="Est. material cost"
-            value={`$${metrics.estMaterialCost.toFixed(2)}`}
-          />
-          <StatCard
-            label="Items short"
-            value={metrics.itemsShort}
-            danger={metrics.itemsShort > 0}
-          />
-        </div>
-
-        {/* ════════════════════════════════════════════════════════
-            LINE-ITEM TABLE
-            ════════════════════════════════════════════════════════ */}
-        <Card className="bom-table-card">
-          <div className="bom-table-toolbar">
-            <span className="bom-table-title">Line items</span>
-            <Button
-              type="button"
-              variant="outline-primary"
-              size="sm"
-              onClick={() => setShowAddItemRow((prev) => !prev)}
-            >
-              <Plus size={14} /> Add item
-            </Button>
-          </div>
-
-          {/* Inline add-item row */}
-          {showAddItemRow && (
-            <div className="bom-add-item-row">
-              <input
-                type="text"
-                className="form-control form-control-sm"
-                placeholder="SKU"
-                value={newItemForm.sku}
-                onChange={(e) => setNewItemForm({ ...newItemForm, sku: e.target.value })}
-              />
-              <input
-                type="text"
-                className="form-control form-control-sm bom-add-item-name"
-                placeholder="Item name"
-                value={newItemForm.name}
-                onChange={(e) => setNewItemForm({ ...newItemForm, name: e.target.value })}
-              />
-              <input
-                type="number"
-                className="form-control form-control-sm bom-add-item-qty"
-                placeholder="Qty"
-                min={1}
-                value={newItemForm.requiredQty}
-                onChange={(e) => setNewItemForm({ ...newItemForm, requiredQty: e.target.value })}
-              />
-              <select
-                className="form-select form-select-sm bom-add-item-wh"
-                value={newItemForm.warehouseId}
-                onChange={(e) => setNewItemForm({ ...newItemForm, warehouseId: e.target.value })}
-              >
-                <option value="">Warehouse</option>
-                {allWarehouses.map((w) => (
-                  <option key={w.id} value={String(w.id)}>{w.name}</option>
-                ))}
-              </select>
-              <Button
-                type="button"
-                variant="success"
-                size="sm"
-                onClick={addLineItem}
-              >
-                Add
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={() => setShowAddItemRow(false)}
-              >
-                <X size={14} />
-              </Button>
-            </div>
-          )}
-
-          <div className="bom-table-wrap">
-            <table className="bom-table">
-              <thead>
-                <tr>
-                  <th>Item / SKU</th>
-                  <th className="bom-col-num">Required</th>
-                  <th className="bom-col-num">Available</th>
-                  <th>Warehouse</th>
-                  <th className="bom-col-status">Status</th>
-                  <th className="bom-col-action"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {lineItems.length === 0 && (
-                  <tr>
-                    <td colSpan={6} className="bom-table-empty">
-                      No line items yet. Load a template, create a new BOM, or add items manually.
-                    </td>
-                  </tr>
-                )}
-                {lineItems.map((item) => {
-                  const dbItem = items.find((i) => String(i.sku) === String(item.sku));
-                  const available = dbItem
-                    ? getAvailableQty(dbItem.id, item.warehouseId)
-                    : 0;
-                  return (
-                    <tr key={item.id}>
-                      <td>
-                        <div className="bom-item-name">{item.name || "—"}</div>
-                        <div className="bom-item-sku">{item.sku || "—"}</div>
-                      </td>
-                      <td className="bom-col-num">
-                        <input
-                          type="number"
-                          className="form-control form-control-sm bom-input-num"
-                          value={item.requiredQty}
-                          onChange={(e) =>
-                            updateLineItem(item.id, "requiredQty", e.target.value)
-                          }
-                          min={0}
-                        />
-                      </td>
-                      <td className="bom-col-num bom-available-cell">
-                        <span className={available < (Number(item.requiredQty) || 0) ? "bom-short" : ""}>
-                          {available}
-                        </span>
-                      </td>
-                      <td>
-                        <select
-                          className="form-select form-select-sm bom-wh-select"
-                          value={item.warehouseId || ""}
-                          onChange={(e) =>
-                            updateLineItem(item.id, "warehouseId", e.target.value)
-                          }
-                        >
-                          <option value="">—</option>
-                          {allWarehouses.map((w) => (
-                            <option key={w.id} value={String(w.id)}>{w.name}</option>
-                          ))}
-                        </select>
-                      </td>
-                      <td className="bom-col-status">
-                        <LineStatusBadge
-                          required={Number(item.requiredQty) || 0}
-                          available={available}
-                        />
-                      </td>
-                      <td className="bom-col-action">
-                        <button
-                          type="button"
-                          className="bom-remove-btn"
-                          onClick={() => removeLineItem(item.id)}
-                          title="Remove line"
-                        >
-                          <X size={14} />
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </Card>
-
-        {/* ════════════════════════════════════════════════════════
-            ALLOCATE STOCK — Primary action
-            ════════════════════════════════════════════════════════ */}
-        <div className="bom-allocate-section">
-          <Button
-            type="button"
-            variant="success"
-            className="bom-allocate-btn"
-            onClick={handleAllocateStock}
-            disabled={lineItems.length === 0}
-          >
-            <PackageCheck size={18} /> Allocate stock
-          </Button>
-          {metrics.itemsShort > 0 && lineItems.length > 0 && (
-            <div className="bom-short-warning">
-              <AlertTriangle size={14} />
-              <span>{metrics.itemsShort} item(s) are short — review before allocating.</span>
-            </div>
-          )}
-        </div>
+        {bomContent}
       </main>
     </div>
   );

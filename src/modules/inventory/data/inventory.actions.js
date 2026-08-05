@@ -275,6 +275,10 @@ export async function createStockLevelAction(payload) {
       quantity: payload?.quantity || 0,
       bin_location: payload?.binLocation || null,
       unit_id: payload?.unitId || null,
+      supplier_id: payload?.supplierId || null,
+      po_no: payload?.poNo || null,
+      delivery_no: payload?.deliveryNo || null,
+      remarks: payload?.remarks || null,
     }])
     .select()
     .single();
@@ -291,6 +295,10 @@ export async function updateStockLevelAction(id, updates) {
   if (updates?.quantity !== undefined) patch.quantity = updates.quantity;
   if (updates?.binLocation !== undefined) patch.bin_location = updates.binLocation;
   if (updates?.unitId !== undefined) patch.unit_id = updates.unitId;
+  if (updates?.supplierId !== undefined) patch.supplier_id = updates.supplierId;
+  if (updates?.poNo !== undefined) patch.po_no = updates.poNo;
+  if (updates?.deliveryNo !== undefined) patch.delivery_no = updates.deliveryNo;
+  if (updates?.remarks !== undefined) patch.remarks = updates.remarks;
 
   const { error } = await supabase
     .from("inv_t_stockslevels")

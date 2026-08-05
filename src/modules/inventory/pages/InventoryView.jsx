@@ -10,7 +10,8 @@ import "./InventoryView.css";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Plus, Search, RefreshCw,
-  ArrowRightLeft, ArrowLeftRight, AlertTriangle, MapPin, User,
+  ArrowRightLeft, ArrowLeftRight, ArrowDownCircle, ArrowUpCircle,
+  AlertTriangle, MapPin, User,
   PackageCheck, Warehouse, Pencil, Trash2, Menu,
   LayoutDashboard, BarChart3, Package, Wrench,
   Truck, ClipboardList, Columns, Settings,
@@ -42,6 +43,9 @@ import {
 } from "../data/inventory.actions";
 import { useRouter } from "next/navigation";
 import MaterialFormModal from "./MaterialFormModal";
+import StockInView from "./StockInView";
+import StockOutView from "./StockOutView";
+import BomView from "./BomView";
 
 // ─── SUB-COMPONENTS ─────────────────────────────────────────
 
@@ -227,6 +231,9 @@ export default function InventoryView({ initialData }) {
         trackingTypeId: item.trackingTypeId ?? item.tracking_type_id,
         itemId: item.itemId ?? item.item_id,
         binLocation: item.binLocation ?? item.bin_location,
+        poNo: item.po_no ?? "",
+        deliveryNo: item.delivery_no ?? "",
+        remarks: item.remarks ?? "",
         barcode: item.barcode ?? item.barcode ?? null,
         description: item.description ?? item.description ?? "",
         weight: item.weight ?? item.weight ?? null,
@@ -264,7 +271,15 @@ export default function InventoryView({ initialData }) {
       return;
     }
     if (viewId === "bom") {
-      router.push("/inventory/bom");
+      setView("bom");
+      return;
+    }
+    if (viewId === "stockIn") {
+      setView("stockIn");
+      return;
+    }
+    if (viewId === "stockOut") {
+      setView("stockOut");
       return;
     }
     setView(viewId);
@@ -530,6 +545,10 @@ export default function InventoryView({ initialData }) {
       quantity: Number(form.quantity) || 0,
       binLocation: form.binLocation || null,
       unitId: form.unitId || null,
+      supplierId: form.supplierId || null,
+      poNo: form.poNo || null,
+      deliveryNo: form.deliveryNo || null,
+      remarks: form.remarks || null,
     };
     if (form.id) {
       runMutation(
@@ -617,25 +636,43 @@ export default function InventoryView({ initialData }) {
           </div>
         </div>
         <nav className="inventory-sidebar-nav">
-          {INVENTORY_VIEWS.map((n) => {
+          {(() => {
+            const grouped = {};
+            INVENTORY_VIEWS.forEach((n) => {
+              const g = n.group || "Other";
+              if (!grouped[g]) grouped[g] = [];
+              grouped[g].push(n);
+            });
+            const groupOrder = ["Dashboard", "Transactions", "Inventory", "Master Data", "Activity", "Configuration"];
             const iconMap = {
               LayoutDashboard, BarChart3, Package, Wrench,
               Warehouse, Truck, ArrowLeftRight, ClipboardList, Columns, Settings,
-              Layers,
+              Layers, ArrowDownCircle, ArrowUpCircle,
             };
-            const IconComponent = iconMap[n.icon];
-            return (
-              <button
-                key={n.id}
-                onClick={() => handleNavClick(n.id)}
-                className={`inventory-sidebar-nav-item${view === n.id ? " is-active" : ""}`}
-                title={n.label}
-              >
-                {IconComponent && <IconComponent size={18} className="inventory-sidebar-nav-icon" />}
-                <span className="inventory-sidebar-nav-label">{n.label}</span>
-              </button>
-            );
-          })}
+            return groupOrder.map((groupName) => {
+              const items = grouped[groupName];
+              if (!items || items.length === 0) return null;
+              return (
+                <div key={groupName} className="inventory-sidebar-nav-group">
+                  <div className="inventory-sidebar-nav-group-header">{groupName}</div>
+                  {items.map((n) => {
+                    const IconComponent = iconMap[n.icon];
+                    return (
+                      <button
+                        key={n.id}
+                        onClick={() => handleNavClick(n.id)}
+                        className={`inventory-sidebar-nav-item${view === n.id ? " is-active" : ""}`}
+                        title={n.label}
+                      >
+                        {IconComponent && <IconComponent size={18} className="inventory-sidebar-nav-icon" />}
+                        <span className="inventory-sidebar-nav-label">{n.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              );
+            });
+          })()}
         </nav>
         {/* <div className="inventory-sidebar-footer">
           Data sourced from Supabase. Changes sync immediately.
@@ -832,6 +869,7 @@ export default function InventoryView({ initialData }) {
               stockLevels={data?.stockLevels || []}
               items={data?.items || []}
               warehouses={data?.warehouses || []}
+              suppliers={data?.suppliers || []}
               config={data?.config}
               onEdit={(item) => openModal("editStockLevel", item)}
               onDelete={(item) => handleDeleteStockLevel(item)}
@@ -860,6 +898,18 @@ export default function InventoryView({ initialData }) {
             <h1 className="inventory-page-title">Activity log</h1>
             <LogTable transactions={data?.transactions || []} />
           </div>
+        )}
+
+        {view === "stockIn" && (
+          <StockInView initialData={data} hideSidebar />
+        )}
+
+        {view === "stockOut" && (
+          <StockOutView initialData={data} hideSidebar />
+        )}
+
+        {view === "bom" && (
+          <BomView initialData={data} hideSidebar />
         )}
       </main>
 
@@ -940,8 +990,6 @@ export default function InventoryView({ initialData }) {
           <Field label="Reorder point"><Input type="number" value={form.reorderPoint || ""} onChange={(e) => setForm({ ...form, reorderPoint: e.target.value })} /></Field>
           <Field label="Default reorder qty"><Input type="number" value={form.defaultReorderQty || ""} onChange={(e) => setForm({ ...form, defaultReorderQty: e.target.value })} /></Field>
           <Field label="Unit cost ($)"><Input type="number" value={form.cost || ""} onChange={(e) => setForm({ ...form, cost: e.target.value })} /></Field>
-          <Field label="Wholesale price ($)"><Input type="number" value={form.wholesalePrice || ""} onChange={(e) => setForm({ ...form, wholesalePrice: e.target.value })} /></Field>
-          <Field label="Retail price ($)"><Input type="number" value={form.retailPrice || ""} onChange={(e) => setForm({ ...form, retailPrice: e.target.value })} /></Field>
           <Field label="Weight">
             <Input value={form.weight || ""} onChange={(e) => setForm({ ...form, weight: e.target.value })} placeholder="e.g. 25 kg" />
           </Field>
@@ -1049,8 +1097,6 @@ export default function InventoryView({ initialData }) {
         <Field label="Reorder point"><Input type="number" value={form.reorderPoint || ""} onChange={(e) => setForm({ ...form, reorderPoint: e.target.value })} /></Field>
         <Field label="Default reorder qty"><Input type="number" value={form.defaultReorderQty || ""} onChange={(e) => setForm({ ...form, defaultReorderQty: e.target.value })} /></Field>
         <Field label="Unit cost ($)"><Input type="number" value={form.cost || ""} onChange={(e) => setForm({ ...form, cost: e.target.value })} /></Field>
-        <Field label="Wholesale price ($)"><Input type="number" value={form.wholesalePrice || ""} onChange={(e) => setForm({ ...form, wholesalePrice: e.target.value })} /></Field>
-        <Field label="Retail price ($)"><Input type="number" value={form.retailPrice || ""} onChange={(e) => setForm({ ...form, retailPrice: e.target.value })} /></Field>
         <Field label="Weight">
           <Input value={form.weight || ""} onChange={(e) => setForm({ ...form, weight: e.target.value })} placeholder="e.g. 25 kg" />
         </Field>
@@ -1139,6 +1185,15 @@ export default function InventoryView({ initialData }) {
             ))}
           </select>
         </Field>
+        <Field label="PO No.">
+          <Input value={form.poNo || ""} onChange={(e) => setForm({ ...form, poNo: e.target.value })} placeholder="e.g. PO-12345" />
+        </Field>
+        <Field label="Delivery No.">
+          <Input value={form.deliveryNo || ""} onChange={(e) => setForm({ ...form, deliveryNo: e.target.value })} placeholder="e.g. DL-001" />
+        </Field>
+        <Field label="Remarks">
+          <Input value={form.remarks || ""} onChange={(e) => setForm({ ...form, remarks: e.target.value })} placeholder="Additional notes" />
+        </Field>
       </Modal>
 
       <Modal show={modal === "addSupplier" || modal === "editSupplier"} onHide={closeModal}
@@ -1223,9 +1278,9 @@ function MaterialsTable({ materials, warehouseName, config, onRestock, onTransfe
   const columns = [
     { key: "name", label: "Name", sortable: true, render: (row) => <span className="fw-semibold">{row.name}</span> },
     { key: "sku", label: "SKU", sortable: true, render: (row) => <span className="inventory-mono text-muted">{row.sku}</span> },
-    { key: "barcode", label: "Barcode", sortable: true, defaultVisible: false, render: (row) => <span className="inventory-mono small">{row.barcode || "—"}</span> },
+    { key: "barcode", label: "Barcode", sortable: true,  render: (row) => <span className="inventory-mono small">{row.barcode || "—"}</span> },
     { key: "description", label: "Description", sortable: true, defaultVisible: false, render: (row) => <span className="text-muted small">{row.description || "—"}</span> },
-    { key: "classification", label: "Classification", sortable: true, render: (row) => <span>{row.classification || "—"}</span> },
+    { key: "classification", label: "Classification", sortable: true, defaultVisible: false, render: (row) => <span>{row.classification || "—"}</span> },
     { key: "tracking", label: "Tracking", sortable: true, align: "center", defaultVisible: false, render: (row) => <span className="text-muted small">{trackingLookup[String(row.tracking_type_id)] || "—"}</span> },
     { key: "unit", label: "UoM", sortable: true, align: "center", render: (row) => {
       const u = uLookup[String(row.unit_id)];
@@ -1251,10 +1306,8 @@ function MaterialsTable({ materials, warehouseName, config, onRestock, onTransfe
       return <span className="text-muted small">{spec}</span>;
     }},
     { key: "cost", label: "Cost ($)", sortable: true, align: "right", render: (row) => row.cost ? <span className="inventory-mono">${Number(row.cost).toFixed(2)}</span> : <span className="text-muted">—</span> },
-    { key: "wholesale", label: "Wholesale ($)", sortable: true, align: "right", defaultVisible: false, render: (row) => row.wholesale_price ? <span className="inventory-mono">${Number(row.wholesale_price).toFixed(2)}</span> : <span className="text-muted">—</span> },
-    { key: "retail", label: "Retail ($)", sortable: true, align: "right", defaultVisible: false, render: (row) => row.retail_price ? <span className="inventory-mono">${Number(row.retail_price).toFixed(2)}</span> : <span className="text-muted">—</span> },
     {
-      key: "isActive", label: "Active", sortable: true, align: "center",
+      key: "isActive", label: "Active", sortable: true,defaultVisible: false, align: "center",
       render: (row) => row.is_active !== false
         ? <Badge bg="success" text="white">Active</Badge>
         : <Badge bg="secondary" text="dark">Inactive</Badge>,
@@ -1358,7 +1411,7 @@ function LogTable({ transactions }) {
   );
 }
 
-function StockLevelsTable({ stockLevels, items, warehouses, config, onEdit, onDelete }) {
+function StockLevelsTable({ stockLevels, items, warehouses, suppliers, config, onEdit, onDelete }) {
   const itemLookup = useMemo(() => {
     const map = {};
     (items || []).forEach((i) => { map[String(i.id)] = i; });
@@ -1397,6 +1450,13 @@ function StockLevelsTable({ stockLevels, items, warehouses, config, onEdit, onDe
       const u = uLookup[String(row.unit_id)];
       return <span className="inventory-mono">{u ? u.abbreviation : "pcs"}</span>;
     }},
+    { key: "po_no", label: "PO No.", sortable: true,  render: (row) => <span className="inventory-mono small">{row.po_no || "—"}</span> },
+    { key: "delivery_no", label: "Delivery No.", sortable: true, render: (row) => <span className="inventory-mono small">{row.delivery_no || "—"}</span> },
+    { key: "supplier", label: "Supplier", sortable: true,  render: (row) => {
+      const supplier = (suppliers || []).find((s) => String(s.id || s.supplier_id) === String(row.supplier_id));
+      return <span>{supplier?.name || "—"}</span>;
+    }},
+    { key: "remarks", label: "Remarks", sortable: true, render: (row) => <span className="text-muted small">{row.remarks || "—"}</span> },
   ];
 
   const actions = [

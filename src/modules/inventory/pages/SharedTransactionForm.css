@@ -1,0 +1,136 @@
+/* Shared styles for Stock In / Stock Out transaction forms */
+
+.tx-form-page {
+  padding: 1.5rem;
+  max-width: 1800px;
+  margin: 0 auto;
+}
+
+.tx-form-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1.25rem;
+}
+
+.tx-form-title {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 1.4rem;
+  font-weight: 700;
+  margin: 0;
+}
+
+.tx-form-subtitle {
+  color: var(--color-text-muted, #6c757d);
+  margin: 0.25rem 0 0;
+  font-size: 0.9rem;
+}
+
+.tx-form-icon-in {
+  color: var(--psb-status-success, #22c55e);
+}
+
+.tx-form-icon-out {
+  color: var(--psb-status-suspended, #f59e0b);
+}
+
+.tx-form-layout {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1.25rem;
+}
+
+.tx-form-layout--full {
+  grid-template-columns: 1fr;
+}
+
+.tx-form-main,
+.tx-form-sidebar {
+  min-width: 0;
+}
+
+.tx-form-card {
+  padding: 1.25rem;
+  border: 1px solid var(--color-border, #e0e0e0);
+  border-radius: var(--radius-lg, 12px);
+  background: var(--color-surface, #fff);
+}
+
+.tx-form-card-header {
+  padding-bottom: 1rem;
+  margin-bottom: 1rem;
+  border-bottom: 1px solid var(--color-border, #e0e0e0);
+}
+
+.tx-form-field-row {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.tx-form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.tx-form-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--color-text, #212529);
+}
+
+.tx-form-section {
+  margin-bottom: 1.25rem;
+}
+
+.tx-form-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.75rem;
+}
+
+.tx-form-section-header h3 {
+  font-size: 1rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+.tx-form-empty {
+  color: var(--color-text-muted, #6c757d);
+  font-size: 0.875rem;
+  text-align: center;
+  padding: 1rem;
+  background: var(--color-surface-alt, #f8f9fa);
+  border-radius: var(--radius-md, 8px);
+  border: 1px dashed var(--color-border, #e0e0e0);
+}
+
+.tx-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--color-border, #e0e0e0);
+}
+
+/* Table tweaks inside the form */
+.tx-form-page .table {
+  margin-bottom: 0;
+}
+
+.tx-form-page .table th {
+  background: var(--color-surface-alt, #f8f9fa);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.tx-form-page .form-select-sm,
+.tx-form-page .form-control-sm {
+  font-size: 0.85rem;
+}

@@ -23,22 +23,26 @@
 
 .invoice-tx-layout {
   display: flex;
+  flex-direction: column;
   gap: 1.5rem;
-  align-items: flex-start;
+}
+
+.invoice-tx-left,
+.invoice-tx-right {
+  flex: none;
+  width: 100%;
 }
 
 /* ─── Left column (line items) ──────────────────────────── */
 
 .invoice-tx-left {
-  flex: 1.6;
   min-width: 0;
 }
 
 /* ─── Right column ───────────────────────────────────────── */
 
 .invoice-tx-right {
-  flex: 1;
-  min-width: 280px;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 1rem;
@@ -48,21 +52,21 @@
 
 .invoice-tx-toolbar {
   display: flex;
-  gap: 1rem;
+  flex-direction: column;
+  gap: 0.5rem;
   margin-bottom: 1rem;
-  align-items: flex-end;
 }
 
 .invoice-tx-toolbar-field {
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
-  min-width: 180px;
+  min-width: 100%;
 }
 
 .invoice-tx-search-field {
   flex: 1;
-  min-width: 200px;
+  min-width: 0;
 }
 
 .invoice-tx-toolbar-label {
@@ -320,10 +324,6 @@
 
 /* ─── Search dropdown ───────────────────────────────────── */
 
-.invoice-tx-search-wrap {
-  position: relative;
-}
-
 .invoice-tx-search-dropdown {
   position: absolute;
   top: 100%;
@@ -390,27 +390,4 @@
   background: var(--psb-bg-hover, rgba(0, 0, 0, 0.04));
   padding: 0.15rem 0.45rem;
   border-radius: 3px;
-}
-
-/* ─── Responsive ─────────────────────────────────────────── */
-
-@media (max-width: 991px) {
-  .invoice-tx-layout {
-    flex-direction: column;
-  }
-
-  .invoice-tx-left,
-  .invoice-tx-right {
-    flex: none;
-    width: 100%;
-  }
-
-  .invoice-tx-toolbar {
-    flex-direction: column;
-    gap: 0.5rem;
-  }
-
-  .invoice-tx-toolbar-field {
-    min-width: 100%;
-  }
 }

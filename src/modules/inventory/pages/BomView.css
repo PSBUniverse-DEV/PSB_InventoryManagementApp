@@ -215,9 +215,13 @@
 
 .bom-stat-row {
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-columns: 1fr 1fr;
   gap: 0.75rem;
   margin-bottom: 1.25rem;
+}
+
+.bom-stat-row > *:last-child {
+  grid-column: 1 / -1;
 }
 
 .bom-stat-card {
@@ -394,11 +398,11 @@
 
 .bom-add-item-row {
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  align-items: stretch;
   gap: 0.5rem;
   padding: 0.65rem 0.85rem;
   border-bottom: 1px solid var(--psb-border, #dee2e6);
-  flex-wrap: wrap;
 }
 
 .bom-add-item-row .form-control-sm {
@@ -407,17 +411,9 @@
   border-radius: 4px;
 }
 
-.bom-add-item-name {
-  flex: 1;
-  min-width: 160px;
-}
-
-.bom-add-item-qty {
-  width: 70px;
-}
-
+.bom-add-item-name,
 .bom-add-item-wh {
-  width: 150px;
+  width: 100%;
 }
 
 /* ─── ALLOCATE STOCK SECTION ───────────────────────────────── */
@@ -457,26 +453,6 @@
 */
 
 /* ─── RESPONSIVE ───────────────────────────────────────────── */
-
-@media (max-width: 767px) {
-  .bom-stat-row {
-    grid-template-columns: 1fr 1fr;
-  }
-
-  .bom-stat-row > *:last-child {
-    grid-column: 1 / -1;
-  }
-
-  .bom-add-item-row {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .bom-add-item-name,
-  .bom-add-item-wh {
-    width: 100%;
-  }
-}
 
 @media (min-width: 640px) {
   .bom-page-header {

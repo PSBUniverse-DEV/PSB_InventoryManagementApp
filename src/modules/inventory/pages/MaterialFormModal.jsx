@@ -360,6 +360,7 @@ export default function MaterialFormModal({
         </>
       }
     >
+      <div className="material-form-grid">
       {/* ─── BASIC INFORMATION ─────────────────────────── */}
       <SectionHeader label="Basic information" />
 
@@ -638,15 +639,7 @@ export default function MaterialFormModal({
         />
       </Field>
 
-      <Field label="Selling price">
-        <Input
-          type="number"
-          value={form.sellingPrice}
-          onChange={(e) => updateField("sellingPrice", e.target.value)}
-          min={0}
-          step="0.01"
-        />
-      </Field>
+      </div>
     </Modal>
   );
 }

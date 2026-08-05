@@ -65,7 +65,7 @@
   font-size: 1.05rem;
   font-weight: 700;
   font-style: bold;
-  color: var(--psb-gold);
+  color: #fff;
   letter-spacing: 0.03em;
 }
 
@@ -87,6 +87,37 @@
   display: flex;
   flex-direction: column;
   gap: 0.2rem;
+}
+
+.inventory-sidebar-nav-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.inventory-sidebar-nav-group-header {
+  padding: 0;
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  opacity: 0;
+  max-height: 0;
+  transition: opacity 150ms ease, padding 150ms ease, max-height 150ms ease;
+}
+
+.inventory-sidebar.is-open .inventory-sidebar-nav-group-header {
+  padding: 0.5rem 0.5rem 0.25rem;
+  opacity: 1;
+  max-height: 2rem;
+}
+
+.inventory-sidebar.is-open .inventory-sidebar-nav-group:first-child .inventory-sidebar-nav-group-header {
+  padding-top: 0;
 }
 
 .inventory-sidebar-nav-item {
@@ -663,4 +694,23 @@
 .inventory-modal-scrollable {
   max-height: 60vh;
   overflow-y: auto;
+}
+
+/* ─── Material form two-column grid ─────────────────────── */
+
+.material-form-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0 1rem;
+}
+
+.material-form-grid > .fw-bold,
+.material-form-grid > .border.rounded {
+  grid-column: 1 / -1;
+}
+
+@media (min-width: 640px) {
+  .material-form-grid {
+    grid-template-columns: 1fr 1fr;
+  }
 }
