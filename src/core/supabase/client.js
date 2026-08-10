@@ -17,6 +17,16 @@ export function initSupabase(url, key) {
       supabase.auth.broadcastChannel.close();
       supabase.auth.broadcastChannel = null;
     }
+
+    // Disable Supabase's built-in visibilitychange listener after it registers.
+    // It fires SIGNED_IN on every tab focus with no throttle; AuthProvider's own
+    // duration-gated handler replaces this. Must await initialize() because the
+    // callback is registered at the END of the async _initialize() call.
+    supabase.auth.initialize().then(() => {
+      if (typeof supabase.auth._removeVisibilityChangedCallback === "function") {
+        supabase.auth._removeVisibilityChangedCallback();
+      }
+    });
   }
 
   return supabase;

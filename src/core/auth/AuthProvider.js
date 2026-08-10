@@ -1,6 +1,7 @@
 "use client";
 
-import { createContext, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { AuthContext, DEFAULT_AUTH_CONTEXT } from "@/core/auth/AuthContext";
 import { getSupabase, initSupabase } from "@/core/supabase/client";
 import { bootstrapAuthState } from "@/core/auth/bootstrap.actions";
 import {
@@ -11,15 +12,6 @@ import {
 } from "@/core/sso-client";
 
 initSupabase(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
-
-export const DEFAULT_AUTH_CONTEXT = Object.freeze({
-  authUser: null,
-  dbUser: null,
-  roles: [],
-  loading: true,
-});
-
-export const AuthContext = createContext(DEFAULT_AUTH_CONTEXT);
 
 function fallbackUserFromAuth(user) {
   return {
@@ -276,6 +268,7 @@ export default function AuthProvider({ children }) {
     }
 
     async function initializeAuth() {
+      console.debug('[Auth] initializeAuth — mounting');  // remove when bug confirmed fixed
       setLoading(true);
 
       try {
@@ -347,22 +340,20 @@ export default function AuthProvider({ children }) {
     initializeAuth();
 
     const { data } = supabase.auth.onAuthStateChange((event, session) => {
+      console.debug('[Auth] onAuthStateChange', event, { init: hasInitializedRef.current, userId: lastAuthUserIdRef.current });  // remove when bug confirmed fixed
       if (session?.access_token) {
         setAccessTokenCookie(session);
       } else if (event === "SIGNED_OUT") {
         clearAccessTokenCookie();
       }
 
-      if (!hasInitializedRef.current && event === "INITIAL_SESSION") {
+      // Block all events until initializeAuth() completes — it handles the initial session.
+      if (!hasInitializedRef.current && event !== "SIGNED_OUT") {
         return;
       }
 
-      // ── Fix E: Discard INITIAL_SESSION after initial hydration ──
-      // Once this tab has completed its own initialization, any
-      // further INITIAL_SESSION events can only be broadcasts from
-      // other tabs being opened/duplicated. We already know our
-      // session state — no need to re-process.
-      if (hasInitializedRef.current && event === "INITIAL_SESSION") {
+      // After init, INITIAL_SESSION is a replay from another tab opening — ignore.
+      if (event === "INITIAL_SESSION") {
         return;
       }
 
@@ -411,14 +402,23 @@ export default function AuthProvider({ children }) {
 
     // ── Visibility Change Handler ───────────────────────────────────
     // Re-bootstrap roles when the tab regains focus (e.g. after an
-    // admin updates roles in another tab). Throttled to 30s to avoid
-    // rapid tab-switch triggers.
-    const VISIBILITY_THROTTLE_MS = 30_000;
+    // admin updates roles in another tab). Only fires if the tab was
+    // actually hidden long enough to be stale — not on quick tab switches.
+    let hiddenAt = null;
+    const STALE_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes
 
     function handleVisibilityChange() {
+      if (document.visibilityState === "hidden") {
+        hiddenAt = Date.now();
+        return;
+      }
+
       if (document.visibilityState !== "visible") return;
       if (!hasInitializedRef.current || !lastAuthUserIdRef.current) return;
-      if (Date.now() - lastBootstrapTsRef.current < VISIBILITY_THROTTLE_MS) return;
+      if (hiddenAt == null) return;
+      const hiddenDuration = Date.now() - hiddenAt;
+      hiddenAt = null;
+      if (hiddenDuration < STALE_THRESHOLD_MS) return;
 
       // ── Fix D: Diff before hydrating on visibility change ──
       // Instead of blindly calling hydrateAuthState, we first fetch

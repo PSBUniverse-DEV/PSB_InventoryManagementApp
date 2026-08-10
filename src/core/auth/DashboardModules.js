@@ -45,15 +45,22 @@ export default function DashboardModules({ modules }) {
   const hasMountedRef = useRef(false);
 
   // Re-fetch server data when the tab regains focus (e.g. after editing cards in admin).
-  // Throttled to avoid unnecessary refreshes on quick tab switches.
+  // Only refreshes if the tab was actually hidden long enough to be stale — not on quick tab switches.
   useEffect(() => {
-    let lastRefreshTs = Date.now();
-    const REFRESH_THROTTLE_MS = 30_000;
+    let hiddenAt = null;
+    const STALE_THRESHOLD_MS = 10 * 60 * 1000; // 10 minutes
 
     function handleVisibilityChange() {
+      if (document.visibilityState === "hidden") {
+        hiddenAt = Date.now();
+        return;
+      }
+
       if (document.visibilityState === "visible" && hasMountedRef.current) {
-        if (Date.now() - lastRefreshTs < REFRESH_THROTTLE_MS) return;
-        lastRefreshTs = Date.now();
+        if (hiddenAt == null) return;
+        const hiddenDuration = Date.now() - hiddenAt;
+        hiddenAt = null;
+        if (hiddenDuration < STALE_THRESHOLD_MS) return;
         router.refresh();
       }
     }

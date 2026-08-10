@@ -61,7 +61,27 @@ const nextConfig = {
   onDemandEntries: {
     // Keep dev pages hot longer to avoid tab-switch recompiles that feel like reloads.
     maxInactiveAge: 60 * 60 * 1000,
-    pagesBufferLength: 8,
+    // Raised from 8 → 100: App Router generates multiple webpack entries per route,
+    // so 8 was exhausted quickly when 10+ tabs are open across different routes.
+    pagesBufferLength: 100,
+  },
+  webpack(config, { dev }) {
+    if (dev) {
+      // Narrow the watcher to source files only; excludes directories that get
+      // incidental writes (Supabase temp files, git index, OS metadata) that
+      // would otherwise trigger spurious Fast Refresh rebuilds on Windows.
+      config.watchOptions = {
+        ...config.watchOptions,
+        ignored: [
+          '**/node_modules/**',
+          '**/.git/**',
+          '**/.next/**',
+          '**/supabase/.temp/**',
+          '**/supabase/db/**',
+        ],
+      };
+    }
+    return config;
   },
   async rewrites() {
     return autoRewrites;
