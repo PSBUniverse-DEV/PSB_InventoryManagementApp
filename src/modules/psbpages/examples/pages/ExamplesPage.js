@@ -10,6 +10,7 @@ import {
   Dropdown,
   Input,
   Modal,
+  MultiSelectDropdown,
   SearchBar,
   StatusBadge,
   TableZ,
@@ -51,6 +52,9 @@ const DEMO_STATUS_OPTIONS = STATUS_OPTIONS.length > 0
       { label: "Inactive", value: "inactive" },
       { label: "Suspended", value: "suspended" },
     ];
+
+// `TEAM_OPTIONS` defined later in the file is used for forms and demos —
+// remove duplicate here and rely on the centralized definition further down.
 
 const TABLE_SOURCE_ROWS = [
   { id: 1, employee_code: "EMP-1101", full_name: "Avery Nguyen",   email: "avery.nguyen@psbuniverse.local",   team: "Platform",   role: "admin",   status: "active",    created_at: "2026-03-22" },
@@ -1563,9 +1567,10 @@ function PlaygroundTab() {
   const [inputValue,     setInputValue]     = useState("Jordan Carter");
   const [inputInvalid,   setInputInvalid]   = useState(false);
   const [searchValue,    setSearchValue]    = useState("");
-  const [dropdownValue,  setDropdownValue]  = useState(null);
-  const [dropdownShow,   setDropdownShow]   = useState(false);
-  const [modalOpen,      setModalOpen]      = useState(false);
+  const [dropdownValue,         setDropdownValue]         = useState(null);
+  const [dropdownShow,          setDropdownShow]          = useState(false);
+  const [multiDropdownValues,   setMultiDropdownValues]   = useState([]);
+  const [modalOpen,             setModalOpen]             = useState(false);
   const [modalSaving,    setModalSaving]    = useState(false);
   const [toastCount,     setToastCount]     = useState(0);
   const [cardModalOpen,  setCardModalOpen]  = useState(false);
@@ -1586,6 +1591,7 @@ function PlaygroundTab() {
 
   const filterConfig = useMemo(() => createFilterConfig([
     { key: "status",     label: "Status",       type: TABLE_FILTER_TYPES.SELECT,    options: STATUS_OPTIONS },
+    { key: "team",       label: "Team",         type: TABLE_FILTER_TYPES.SELECT,    multiple: true, options: TEAM_OPTIONS },
     { key: "created_at", label: "Created Date", type: TABLE_FILTER_TYPES.DATERANGE },
   ]), []);
 
@@ -1608,10 +1614,18 @@ function PlaygroundTab() {
     },
   ], []);
 
+  const selectedStatusLabels = useMemo(() => {
+    const selectedItems = multiDropdownValues
+      .map((value) => DEMO_STATUS_OPTIONS.find((option) => option.value === value)?.label || value)
+      .filter(Boolean);
+    return selectedItems.length > 0 ? selectedItems.join(", ") : "None";
+  }, [multiDropdownValues]);
+
   const filteredRows = useMemo(() => {
     const f  = tableState.filters || {};
     const sq = normalizeText(f.search);
     const st = normalizeText(f.status);
+    const teamF = f.team;
     const dr = f.created_at || {};
     const start = parseDateOnly(dr.start);
     const end   = parseDateOnly(dr.end);
@@ -1621,6 +1635,16 @@ function PlaygroundTab() {
         if (!hay.includes(sq)) return false;
       }
       if (st && normalizeText(row.status) !== st) return false;
+
+      // Team filter: support single-value and multi-select (array)
+      if (Array.isArray(teamF)) {
+        if (teamF.length > 0) {
+          const allowed = new Set(teamF.map((t) => String(t || "").trim().toLowerCase()));
+          if (!allowed.has(normalizeText(row.team))) return false;
+        }
+      } else if (teamF) {
+        if (normalizeText(row.team) !== normalizeText(teamF)) return false;
+      }
       const d = parseDateOnly(row.created_at);
       if (start && d && d < start) return false;
       if (end   && d && d > end)   return false;
@@ -2132,6 +2156,19 @@ const handleSearch = async (value) => {
           </Dropdown>
           <p style={{ fontSize: 12, color: "#666", marginTop: 4 }}>Selected: <code>{dropdownValue?.label || "None"}</code></p>
 
+          <p className={styles.playLabel} style={{ marginTop: 12 }}>Multi-select Dropdown</p>
+          <MultiSelectDropdown
+            options={DEMO_STATUS_OPTIONS}
+            selectedValues={multiDropdownValues}
+            onChange={setMultiDropdownValues}
+            placeholder="Select statuses"
+            buttonVariant="secondary"
+            buttonSize="sm"
+          />
+          <p style={{ fontSize: 12, color: "#666", marginTop: 4 }}>
+            Selected: <code>{selectedStatusLabels}</code>
+          </p>
+
           <p className={styles.playLabel} style={{ marginTop: 12 }}>Action Menu with Divider</p>
           <Dropdown>
             <Dropdown.Toggle variant="secondary" size="sm">Actions</Dropdown.Toggle>
@@ -2548,12 +2585,12 @@ const actions = [
 // ---------------------------------------------------------------------------
 
 const TEAM_OPTIONS = [
-  { label: "Platform",   value: "platform"   },
-  { label: "Risk",       value: "risk"       },
-  { label: "Operations", value: "operations" },
-  { label: "Finance",    value: "finance"    },
-  { label: "Support",    value: "support"    },
-  { label: "Audit",      value: "audit"      },
+  { label: "Platform",   value: "Platform"   },
+  { label: "Risk",       value: "Risk"       },
+  { label: "Operations", value: "Operations" },
+  { label: "Finance",    value: "Finance"    },
+  { label: "Support",    value: "Support"    },
+  { label: "Audit",      value: "Audit"      },
 ];
 
 const ROLE_OPTIONS = [

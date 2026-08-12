@@ -6,6 +6,7 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faSort, faSortUp, faSortDown, faChevronUp, faChevronDown, faXmark } from "@fortawesome/free-solid-svg-icons";
 import { faFloppyDisk } from "@fortawesome/free-regular-svg-icons";
 import SearchBar from "@/shared/components/ui/controls/SearchBar";
+import MultiSelectDropdown from "@/shared/components/ui/controls/MultiSelectDropdown";
 import { TableContextMenuWrapper } from "@/shared/components/ui/table/TableContextMenu";
 import { TableSidePanelWrapper } from "@/shared/components/ui/table/TableSidePanel";
 import { createFilterConfig, TABLE_FILTER_TYPES } from "@/shared/components/ui/table/filterSchema";
@@ -114,6 +115,12 @@ function matchesFilter(row, filter, filterValue) {
   }
 
   if (filter.type === TABLE_FILTER_TYPES.SELECT || filter.type === TABLE_FILTER_TYPES.DATE) {
+    // Support single-value filters and array (multi-select) filters.
+    if (Array.isArray(filterValue)) {
+      const normalized = filterValue.map((v) => String(v ?? ""));
+      return normalized.includes(String(rowValue ?? ""));
+    }
+
     return String(rowValue ?? "") === String(filterValue ?? "");
   }
 
@@ -1010,6 +1017,27 @@ export default function TableZ({
 
                 if (filter.type === TABLE_FILTER_TYPES.SELECT) {
                   const options = normalizeFilterOptions(filter.options);
+
+                  // Multi-select support when `filter.multiple === true`.
+                  if (filter.multiple === true) {
+                    const selectedValues = Array.isArray(filterValue) ? filterValue : [];
+
+                    return (
+                      <div key={filter.key} className="psb-ui-table-filter">
+                        <Form.Label className="psb-ui-table-filter-label" htmlFor={filterId}>
+                          {filter.label}
+                        </Form.Label>
+                        <MultiSelectDropdown
+                          id={filterId}
+                          options={options}
+                          selectedValues={selectedValues}
+                          onChange={(next) => handleFilterValueChange(filter.key, next)}
+                          disabled={filter.loading === true}
+                        />
+                      </div>
+                    );
+                  }
+
                   const selectedValue = filterValue === undefined || filterValue === null ? "" : String(filterValue);
 
                   return (

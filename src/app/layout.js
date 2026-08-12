@@ -22,7 +22,7 @@ export const metadata = {
 export default function RootLayout({ children }) {
   return (
     <html lang="en" className={`${inter.variable} ${manrope.variable}`}>
-      <body className="dense-workspace">
+      <body className="dense-workspace" suppressHydrationWarning>
         <Providers>{children}</Providers>
       </body>
     </html>
