@@ -45,6 +45,7 @@ import { useRouter } from "next/navigation";
 import MaterialFormModal from "./MaterialFormModal";
 import StockInView from "./StockInView";
 import StockOutView from "./StockOutView";
+import ProcurementView from "./ProcurementView";
 import BomView from "./BomView";
 
 // ─── SUB-COMPONENTS ─────────────────────────────────────────
@@ -280,6 +281,10 @@ export default function InventoryView({ initialData }) {
     }
     if (viewId === "stockOut") {
       setView("stockOut");
+      return;
+    }
+    if (viewId === "procurement") {
+      setView("procurement");
       return;
     }
     setView(viewId);
@@ -906,6 +911,10 @@ export default function InventoryView({ initialData }) {
 
         {view === "stockOut" && (
           <StockOutView initialData={data} hideSidebar />
+        )}
+
+        {view === "procurement" && (
+          <ProcurementView initialData={data} hideSidebar />
         )}
 
         {view === "bom" && (

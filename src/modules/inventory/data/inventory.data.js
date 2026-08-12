@@ -13,6 +13,7 @@ export const INVENTORY_VIEWS = [
   { id: "dashboard", label: "Dashboard", icon: "LayoutDashboard", group: "Dashboard" },
   { id: "stockIn", label: "Stock In", icon: "ArrowDownCircle", group: "Transactions" },
   { id: "stockOut", label: "Stock Out", icon: "ArrowUpCircle", group: "Transactions" },
+  { id: "procurement", label: "Procurement", icon: "ClipboardList", group: "Transactions" },
   { id: "materials", label: "Materials", icon: "Package", group: "Master Data" },
   { id: "equipment", label: "Equipment", icon: "Wrench", group: "Master Data" },
   { id: "warehouses", label: "Warehouse", icon: "Warehouse", group: "Master Data" },

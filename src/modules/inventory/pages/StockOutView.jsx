@@ -335,7 +335,7 @@ export default function StockOutView({ initialData, hideSidebar = false }) {
               <ArrowUpCircle size={22} className="tx-form-icon-out" />
               Stock Out
             </h1>
-            <p className="tx-form-subtitle">Issue inventory for projects, usage, or sales.</p>
+            <p className="tx-form-subtitle">Issue inventory for projects and usage</p>
           </div>
           <Button variant="ghost" size="sm" onClick={refresh} disabled={isBusy}>
             <RefreshCw size={14} /> Refresh
@@ -357,7 +357,7 @@ export default function StockOutView({ initialData, hideSidebar = false }) {
                       placeholder="Auto-generated"
                     />
                   </div>
-                  <div className="tx-form-field">
+                  <div className="tx-form-field col-2">
                     <label className="tx-form-label">Date</label>
                     <input
                       type="date"
