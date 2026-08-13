@@ -11,15 +11,17 @@ import { isEntityActive } from "./inventoryHelpers.data";
 
 export const INVENTORY_VIEWS = [
   { id: "dashboard", label: "Dashboard", icon: "LayoutDashboard", group: "Dashboard" },
-  { id: "stockIn", label: "Stock In", icon: "ArrowDownCircle", group: "Transactions" },
-  { id: "stockOut", label: "Stock Out", icon: "ArrowUpCircle", group: "Transactions" },
+  // { id: "stockIn", label: "Stock In", icon: "ArrowDownCircle", group: "Transactions" },
+  // { id: "stockOut", label: "Stock Out", icon: "ArrowUpCircle", group: "Transactions" },
+   { id: "bom", label: "Bill of Materials", icon: "Layers", group: "Transactions" },
   { id: "procurement", label: "Procurement", icon: "ClipboardList", group: "Transactions" },
+  // { id: "purchaseRequests", label: "Purchase Requests", icon: "ClipboardList", group: "Transactions" },
   { id: "materials", label: "Materials", icon: "Package", group: "Master Data" },
   { id: "equipment", label: "Equipment", icon: "Wrench", group: "Master Data" },
   { id: "warehouses", label: "Warehouse", icon: "Warehouse", group: "Master Data" },
   { id: "suppliers", label: "Suppliers", icon: "Truck", group: "Master Data" },
   { id: "stocklevels", label: "Stock levels", icon: "BarChart3", group: "Inventory" },
-  { id: "bom", label: "Bill of Materials", icon: "Layers", group: "Transactions" },
+ 
   { id: "log", label: "Activity log", icon: "ClipboardList", group: "Activity" },
   { id: "boards", label: "Boards", icon: "Columns", group: "Configuration" },
   { id: "boardSetup", label: "Board Setup", icon: "Settings", group: "Configuration" },

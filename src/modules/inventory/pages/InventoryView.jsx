@@ -46,6 +46,7 @@ import MaterialFormModal from "./MaterialFormModal";
 import StockInView from "./StockInView";
 import StockOutView from "./StockOutView";
 import ProcurementView from "./ProcurementView";
+import PurchaseRequestListView from "./PurchaseRequestListView";
 import BomView from "./BomView";
 
 // ─── SUB-COMPONENTS ─────────────────────────────────────────
@@ -76,6 +77,7 @@ export default function InventoryView({ initialData }) {
   const [loaded, setLoaded] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [view, setView] = useState("dashboard");
+  const [procurementDefaultView, setProcurementDefaultView] = useState("dashboard");
   const [search, setSearch] = useState("");
   const [filterWh, setFilterWh] = useState("all");
   const [modal, setModal] = useState(null);
@@ -285,6 +287,7 @@ export default function InventoryView({ initialData }) {
     }
     if (viewId === "procurement") {
       setView("procurement");
+      setProcurementDefaultView("dashboard");
       return;
     }
     setView(viewId);
@@ -914,7 +917,18 @@ export default function InventoryView({ initialData }) {
         )}
 
         {view === "procurement" && (
-          <ProcurementView initialData={data} hideSidebar />
+          <ProcurementView initialData={data} hideSidebar onNavigate={setView} defaultView={procurementDefaultView} />
+        )}
+
+        {view === "purchaseRequests" && (
+          <PurchaseRequestListView
+            initialData={data}
+            onNavigate={setView}
+            onCreateRequest={() => {
+              setProcurementDefaultView("pr");
+              setView("procurement");
+            }}
+          />
         )}
 
         {view === "bom" && (

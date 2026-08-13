@@ -18,13 +18,18 @@ export async function loadInventoryData() {
 
   // Operational tables may not exist yet; wrap each call so the page still
   // renders if a table is missing. Returns empty arrays as safe fallbacks.
-  const [itemsRes, warehousesRes, transactionsRes, stockLevelsRes, suppliersRes, bomTemplateRes] = await Promise.all([
+  const [itemsRes, warehousesRes, transactionsRes, stockLevelsRes, suppliersRes, bomTemplateRes, usersRes, departmentsRes, purchaseRequestsRes, purchaseRequestItemsRes, purchaseOrdersRes] = await Promise.all([
     safeQuery(() => supabase.from("inv_s_inventoryitem").select("*").order("name", { ascending: true })),
     safeQuery(() => supabase.from("inv_s_warehouse").select("*").order("name", { ascending: true })),
     safeQuery(() => supabase.from("inv_t_activitylog").select("*").order("created_at", { ascending: false }).limit(200)),
     safeQuery(() => supabase.from("inv_t_stockslevels").select("*").order("created_at", { ascending: false })),
     safeQuery(() => supabase.from("inv_s_supplier").select("*").order("name", { ascending: true })),
     safeQuery(() => supabase.from("inv_s_bom_template").select("*").order("project_name", { ascending: true })),
+    safeQuery(() => supabase.from("psb_s_user").select("user_id, first_name, last_name, email").order("last_name", { ascending: true })),
+    safeQuery(() => supabase.from("psb_s_department").select("dept_id, dept_name").order("dept_name", { ascending: true })),
+    safeQuery(() => supabase.from("inv_t_purchaserequest").select("*").order("created_at", { ascending: false }).limit(200)),
+    safeQuery(() => supabase.from("inv_t_purchaserequest_items").select("*, inv_s_inventoryitem(name, sku)").order("pritem_id", { ascending: true })),
+    safeQuery(() => supabase.from("inv_t_purchaseorder").select("*, inv_s_supplier(name)").order("created_at", { ascending: false }).limit(200)),
   ]);
 
   // Compute quantity per item by aggregating stock levels
@@ -51,6 +56,20 @@ export async function loadInventoryData() {
     stockLevels: (stockLevelsRes ?? []).map((r) => ({ ...r, id: r.id ?? r.stocklevel_id })),
     suppliers: (suppliersRes ?? []).map((r) => ({ ...r, id: r.id ?? r.supplier_id })),
     bomTemplates: (bomTemplateRes ?? []).map((r) => ({ ...r, id: r.id ?? r.bom_temp_id })),
+    users: (usersRes ?? []).map((r) => ({ ...r, id: r.user_id })),
+    departments: (departmentsRes ?? []).map((r) => ({ ...r, id: r.dept_id })),
+    purchaseRequests: (purchaseRequestsRes ?? []).map((r) => ({ ...r, id: r.pr_id })),
+    purchaseRequestItems: (purchaseRequestItemsRes ?? []).map((r) => ({
+      ...r,
+      id: r.pritem_id,
+      itemName: r.inv_s_inventoryitem?.name || r.item_name || "Unknown",
+      itemSku: r.inv_s_inventoryitem?.sku || r.item_sku || "",
+    })),
+    purchaseOrders: (purchaseOrdersRes ?? []).map((r) => ({
+      ...r,
+      id: r.po_id,
+      supplierName: r.inv_s_supplier?.name || r.supplier_name || "Unknown",
+    })),
   };
 }
 
@@ -391,9 +410,64 @@ export async function loadBomTemplateDetailsAction(bomTempId) {
 
 //#endregion
 
+//#region ─── PURCHASE REQUESTS ─────────────────────────────────────
+
+export async function createPurchaseRequestAction(payload) {
+  const supabase = getSupabaseAdmin();
+
+  // 1. Insert header
+  const { data: header, error: headerError } = await supabase
+    .from("inv_t_purchaserequest")
+    .insert([{
+      pr_no: payload?.prNo || null,
+      pr_date: payload?.prDate || null,
+      requestor_id: payload?.requestorId || null,
+      dept_id: payload?.deptId || null,
+      date_required: payload?.dateRequired || null,
+      priority: payload?.priority || null,
+      remarks: payload?.remarks || null,
+      status_id: payload?.statusId || null,
+    }])
+    .select("*")
+    .single();
+
+  if (headerError) throw new Error(`Failed to create purchase request: ${headerError.message}`);
+  if (!header) throw new Error("Failed to create purchase request: no data returned.");
+
+  const prId = header.pr_id;
+  const items = (payload?.items || []).filter((i) => i.itemId);
+
+  // 2. Insert line items (if any)
+  if (items.length > 0) {
+    const lineRows = items.map((i) => ({
+      pr_id: prId,
+      item_id: i.itemId || null,
+      quantity: Number(i.quantity) || 0,
+      uom_id: i.unitId || null,
+      est_unit_cost: i.estUnitCost ? Number(i.estUnitCost) : null,
+      est_total_cost: (Number(i.quantity) || 0) * (i.estUnitCost ? Number(i.estUnitCost) : 0),
+    }));
+
+    const { error: itemsError } = await supabase
+      .from("inv_t_purchaserequest_items")
+      .insert(lineRows);
+
+    if (itemsError) {
+      // Rollback header on line item failure
+      await supabase.from("inv_t_purchaserequest").delete().eq("pr_id", prId);
+      throw new Error(`Failed to create purchase request items: ${itemsError.message}`);
+    }
+  }
+
+  return header;
+}
+
+//#endregion
+
 //#region ─── HELPERS ────────────────────────────────────────────────
 
 async function safeQuery(queryFn) {
+
   try {
     const { data, error } = await queryFn();
     if (error) {

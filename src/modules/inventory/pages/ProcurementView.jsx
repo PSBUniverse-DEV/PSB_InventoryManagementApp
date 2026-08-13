@@ -6,12 +6,13 @@ import {
   ClipboardList, FileText, Plus, RefreshCw, X, Save, Trash2,
   ArrowLeft, TrendingUp, TrendingDown, Clock, CheckCircle,
   AlertTriangle, DollarSign, Package, Truck, BarChart3,
-  Download,
+  Download, ArrowRight,
 } from "lucide-react";
 import {
   Button, Card, Input, toastError, toastSuccess,
 } from "@/shared/components/ui";
 import TableZ from "@/shared/components/ui/table/TableZ";
+import { createPurchaseRequestAction } from "../data/inventory.actions";
 import "./InventoryView.css";
 import "./SharedTransactionForm.css";
 
@@ -39,18 +40,32 @@ function displayValue(value) {
   return value;
 }
 
+function PriorityBadge({ priority }) {
+  const level = String(priority || "").toLowerCase();
+  let className = "proc-priority";
+  if (level === "low") className += " proc-priority--low";
+  else if (level === "medium") className += " proc-priority--medium";
+  else if (level === "high") className += " proc-priority--high";
+  else if (level === "urgent") className += " proc-priority--urgent";
+  else className += " proc-priority--default";
+  return <span className={className}>{priority || "—"}</span>;
+}
+
 // ---------------------------------------------------------------------------
 // Main View
 // ---------------------------------------------------------------------------
-export default function ProcurementView({ initialData, hideSidebar = false }) {
+export default function ProcurementView({ initialData, hideSidebar = false, onNavigate, defaultView = "dashboard" }) {
   const router = useRouter();
   const data = initialData;
   const [isBusy, setIsBusy] = useState(false);
-  const [view, setView] = useState("dashboard"); // "dashboard" | "pr" | "po"
+  const [view, setView] = useState(defaultView); // "dashboard" | "pr" | "po"
+  const [expandedPrIds, setExpandedPrIds] = useState(new Set());
 
   const items = data?.items || [];
   const warehouses = data?.warehouses || [];
   const suppliers = data?.suppliers || [];
+  const users = data?.users || [];
+  const departments = data?.departments || [];
   const config = data?.config || {};
 
   // Filter to materials only
@@ -79,6 +94,60 @@ export default function ProcurementView({ initialData, hideSidebar = false }) {
     },
     [itemMap, unitLookup]
   );
+
+  const unitIdForItem = useCallback(
+    (itemId) => {
+      const item = itemMap[String(itemId)];
+      return item ? String(item.unit_id || "") : "";
+    },
+    [itemMap]
+  );
+
+  // ─── Purchase Request Lookups ──────────────────────────────
+  const purchaseRequests = data?.purchaseRequests || [];
+  const purchaseRequestItems = data?.purchaseRequestItems || [];
+  const purchaseOrders = data?.purchaseOrders || [];
+
+  const userById = useMemo(() => {
+    const map = {};
+    (users || []).forEach((u) => { map[String(u.id)] = u; });
+    return map;
+  }, [users]);
+
+  const deptById = useMemo(() => {
+    const map = {};
+    (departments || []).forEach((d) => { map[String(d.id)] = d; });
+    return map;
+  }, [departments]);
+
+  const prItemsByPrId = useMemo(() => {
+    const map = {};
+    (purchaseRequestItems || []).forEach((item) => {
+      const prId = String(item.pr_id);
+      if (!map[prId]) map[prId] = [];
+      map[prId].push(item);
+    });
+    return map;
+  }, [purchaseRequestItems]);
+
+  // ─── KPI Metrics ───────────────────────────────────────────
+  const kpiPurchaseRequests = purchaseRequests.length;
+  const kpiPendingApproval = purchaseRequests.filter((pr) => pr.status_id == null).length;
+  const kpiActivePurchaseOrders = purchaseOrders.length;
+  // Procurement Spend = sum of PO est_total_cost for PRs that have a linked PO (treated as approved).
+  const kpiProcurementSpend = useMemo(
+    () => (purchaseOrders || []).reduce((sum, po) => sum + (Number(po.est_total_cost) || 0), 0),
+    [purchaseOrders]
+  );
+
+  const togglePrExpand = useCallback((prId) => {
+    setExpandedPrIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(prId)) next.delete(prId);
+      else next.add(prId);
+      return next;
+    });
+  }, []);
 
   // ─── PR Form State ─────────────────────────────────────────
   const [prForm, setPrForm] = useState({
@@ -115,11 +184,18 @@ export default function ProcurementView({ initialData, hideSidebar = false }) {
 
   // ─── PR Line Item Helpers ──────────────────────────────────
   const addPrLineItem = useCallback(() => {
-    setPrLineItems((prev) => [...prev, { id: Date.now(), itemId: "", quantity: "", purpose: "" }]);
+    setPrLineItems((prev) => [...prev, { id: Date.now(), itemId: "", quantity: "", unitId: "", estUnitCost: "" }]);
   }, []);
   const updatePrLineItem = useCallback((id, field, value) => {
-    setPrLineItems((prev) => prev.map((li) => (li.id === id ? { ...li, [field]: value } : li)));
-  }, []);
+    setPrLineItems((prev) => prev.map((li) => {
+      if (li.id !== id) return li;
+      const updates = { [field]: value };
+      if (field === "itemId" && value && !li.unitId) {
+        updates.unitId = unitIdForItem(value);
+      }
+      return { ...li, ...updates };
+    }));
+  }, [unitIdForItem]);
   const removePrLineItem = useCallback((id) => {
     setPrLineItems((prev) => prev.filter((li) => li.id !== id));
   }, []);
@@ -136,9 +212,43 @@ export default function ProcurementView({ initialData, hideSidebar = false }) {
   }, []);
 
   // ─── Submit Handlers ───────────────────────────────────────
-  const handlePrSubmit = useCallback(() => {
-    showToast("Purchase Request saved (UI only — data binding coming soon).");
-  }, [showToast]);
+  const handlePrSubmit = useCallback(async (saveAsDraft = false) => {
+    if (!prForm.requestedBy) {
+      showToast("Requested By is required.", "error");
+      return;
+    }
+    setIsBusy(true);
+    try {
+      await createPurchaseRequestAction({
+        prNo: prForm.refNo,
+        prDate: prForm.date,
+        requestorId: prForm.requestedBy,
+        deptId: prForm.department,
+        dateRequired: prForm.requiredDate,
+        priority: prForm.priority,
+        remarks: prForm.remarks,
+        statusId: null,
+        items: prLineItems,
+        isDraft: saveAsDraft,
+      });
+      showToast(saveAsDraft ? "Purchase Request saved as draft." : "Purchase Request submitted successfully.");
+      setPrForm({
+        refNo: generatePRNo(),
+        date: new Date().toISOString().slice(0, 10),
+        requestedBy: "",
+        department: "",
+        requiredDate: "",
+        priority: PR_PRIORITIES[1],
+        remarks: "",
+      });
+      setPrLineItems([]);
+      refresh();
+    } catch (err) {
+      showToast(err?.message || "Failed to save purchase request.", "error");
+    } finally {
+      setIsBusy(false);
+    }
+  }, [prForm, prLineItems, refresh, showToast]);
   const handlePoSubmit = useCallback(() => {
     showToast("Purchase Order saved (UI only — data binding coming soon).");
   }, [showToast]);
@@ -152,18 +262,28 @@ export default function ProcurementView({ initialData, hideSidebar = false }) {
       </select>
     )},
     { key: "quantity", label: "Qty", sortable: false, align: "center", render: (row) => (
-      <div style={{ display: "flex", alignItems: "center", gap: "4px", justifyContent: "center" }}>
+      <div className="d-flex justify-content-center align-items-center">
         <input type="number" className="form-control form-control-sm" value={row.quantity} onChange={(e) => updatePrLineItem(row.id, "quantity", e.target.value)} placeholder="0" min="1" style={{ width: "80px", textAlign: "center" }} />
-        <span className="text-muted small">{unitForItem(row.itemId)}</span>
       </div>
     )},
-    { key: "purpose", label: "Purpose / Notes", sortable: false, render: (row) => (
-      <input type="text" className="form-control form-control-sm" value={row.purpose} onChange={(e) => updatePrLineItem(row.id, "purpose", e.target.value)} placeholder="e.g. Project Alpha restock" style={{ width: "100%", minWidth: "160px" }} />
+    { key: "unitId", label: "Unit", sortable: false, align: "center", render: (row) => (
+      <select className="form-select form-select-sm" value={row.unitId} onChange={(e) => updatePrLineItem(row.id, "unitId", e.target.value)} style={{ width: "100%", minWidth: "120px" }}>
+        <option value="">Select unit</option>
+        {(config?.units || []).map((u) => (<option key={u.id} value={String(u.id)}>{u.abbreviation || u.name}</option>))}
+      </select>
     )},
-    { key: "actions", label: "", sortable: false, align: "center", render: (row) => (
+    { key: "estUnitCost", label: "Est. Unit Cost", sortable: false, align: "right", render: (row) => (
+      <input type="number" className="form-control form-control-sm" value={row.estUnitCost} onChange={(e) => updatePrLineItem(row.id, "estUnitCost", e.target.value)} placeholder="0.00" min="0" step="0.01" style={{ width: "100px", textAlign: "right" }} />
+    )},
+    { key: "estTotalCost", label: "Est. Total Cost", sortable: false, align: "right", render: (row) => {
+      const qty = Number(row.quantity) || 0;
+      const cost = Number(row.estUnitCost) || 0;
+      return <span className="inventory-mono fw-semibold">${(qty * cost).toFixed(2)}</span>;
+    }},
+    { key: "actions", label: "Remove", sortable: false, align: "center", render: (row) => (
       <Button variant="ghost" size="sm" onClick={() => removePrLineItem(row.id)} title="Remove item"><Trash2 size={14} /></Button>
     )},
-  ], [materialItems, updatePrLineItem, removePrLineItem, unitForItem]);
+  ], [materialItems, config?.units, updatePrLineItem, removePrLineItem]);
 
   // ─── PO Line Item Columns ──────────────────────────────────
   const poLineItemColumns = useMemo(() => [
@@ -187,7 +307,7 @@ export default function ProcurementView({ initialData, hideSidebar = false }) {
       const price = Number(row.unitPrice) || 0;
       return <span className="inventory-mono fw-semibold">${(qty * price).toFixed(2)}</span>;
     }},
-    { key: "actions", label: "", sortable: false, align: "center", render: (row) => (
+    { key: "actions", label: "Remove", sortable: false, align: "center", render: (row) => (
       <Button variant="ghost" size="sm" onClick={() => removePoLineItem(row.id)} title="Remove item"><Trash2 size={14} /></Button>
     )},
   ], [materialItems, updatePoLineItem, removePoLineItem, unitForItem]);
@@ -227,11 +347,17 @@ export default function ProcurementView({ initialData, hideSidebar = false }) {
                   <div className="tx-form-field-row">
                     <div className="tx-form-field">
                       <label className="tx-form-label">Requested By *</label>
-                      <Input value={prForm.requestedBy} onChange={(e) => updatePrForm("requestedBy", e.target.value)} placeholder="Employee name" />
+                      <select className="form-select" value={prForm.requestedBy} onChange={(e) => updatePrForm("requestedBy", e.target.value)}>
+                        <option value="">Select user</option>
+                        {users.map((u) => (<option key={u.id} value={String(u.id)}>{u.first_name} {u.last_name}{u.email ? ` (${u.email})` : ""}</option>))}
+                      </select>
                     </div>
                     <div className="tx-form-field">
                       <label className="tx-form-label">Department</label>
-                      <Input value={prForm.department} onChange={(e) => updatePrForm("department", e.target.value)} placeholder="e.g. Operations, Maintenance" />
+                      <select className="form-select" value={prForm.department} onChange={(e) => updatePrForm("department", e.target.value)}>
+                        <option value="">Select department</option>
+                        {departments.map((d) => (<option key={d.id} value={String(d.id)}>{d.dept_name}</option>))}
+                      </select>
                     </div>
                   </div>
                   <div className="tx-form-field-row">
@@ -246,6 +372,12 @@ export default function ProcurementView({ initialData, hideSidebar = false }) {
                       </select>
                     </div>
                   </div>
+                  <div className="tx-form-field-row">
+                    <div className="tx-form-field" style={{ gridColumn: "1 / -1" }}>
+                      <label className="tx-form-label">Remarks</label>
+                      <Input value={prForm.remarks} onChange={(e) => updatePrForm("remarks", e.target.value)} placeholder="Justification, special instructions, etc." />
+                    </div>
+                  </div>
                 </div>
                 <div className="tx-form-section">
                   <div className="tx-form-section-header">
@@ -255,15 +387,10 @@ export default function ProcurementView({ initialData, hideSidebar = false }) {
                   {prLineItems.length > 0 && <TableZ data={prLineItems} columns={prLineItemColumns} rowIdKey="id" hideSearch hideFooter emptyMessage="" />}
                   {prLineItems.length === 0 && <p className="tx-form-empty">No items added yet. Click "Add Item" to start.</p>}
                 </div>
-                <div className="tx-form-section">
-                  <div className="tx-form-field">
-                    <label className="tx-form-label">Remarks</label>
-                    <Input value={prForm.remarks} onChange={(e) => updatePrForm("remarks", e.target.value)} placeholder="Justification, special instructions, etc." />
-                  </div>
-                </div>
                 <div className="tx-form-actions">
                   <Button variant="ghost" size="sm" onClick={() => { setPrLineItems([]); updatePrForm("remarks", ""); }} disabled={isBusy}><X size={14} /> Clear Form</Button>
-                  <Button variant="danger" size="md" onClick={handlePrSubmit} loading={isBusy}><Save size={14} /> Submit Purchase Request</Button>
+                  <Button variant="secondary" size="md" onClick={() => handlePrSubmit(true)} loading={isBusy} disabled={isBusy}><Save size={14} /> Save as Draft</Button>
+                  <Button variant="danger" size="md" onClick={() => handlePrSubmit(false)} loading={isBusy} disabled={isBusy}><Save size={14} /> Submit Purchase Request</Button>
                 </div>
               </Card>
             </div>
@@ -379,24 +506,130 @@ export default function ProcurementView({ initialData, hideSidebar = false }) {
           <div className="proc-kpi-grid">
             <article className="proc-kpi-card">
               <div className="proc-kpi-label">Purchase Requests</div>
-              <div className="proc-kpi-value">—</div>
+              <div className="proc-kpi-value">{kpiPurchaseRequests}</div>
               <div className="proc-kpi-meta">Current period</div>
             </article>
             <article className="proc-kpi-card proc-kpi-card--warning">
               <div className="proc-kpi-label">Pending Approval</div>
-              <div className="proc-kpi-value">—</div>
+              <div className="proc-kpi-value">{kpiPendingApproval}</div>
               <div className="proc-kpi-meta">Requires attention</div>
             </article>
             <article className="proc-kpi-card proc-kpi-card--success">
               <div className="proc-kpi-label">Active Purchase Orders</div>
-              <div className="proc-kpi-value">—</div>
+              <div className="proc-kpi-value">{kpiActivePurchaseOrders}</div>
               <div className="proc-kpi-meta">Current active orders</div>
             </article>
             <article className="proc-kpi-card">
               <div className="proc-kpi-label">Procurement Spend</div>
-              <div className="proc-kpi-value">—</div>
+              <div className="proc-kpi-value">${kpiProcurementSpend.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
               <div className="proc-kpi-meta">Current period</div>
             </article>
+          </div>
+        </section>
+
+        {/* ── Recent Purchase Requests ────────────────────── */}
+        <section className="proc-section">
+          <div className="proc-section-header">
+            <div>
+              <h2 className="proc-section-title">Recent Purchase Requests</h2>
+              <p className="proc-section-desc">Latest purchase requests from the inventory procurement process.</p>
+            </div>
+            <Button variant="outline-secondary" size="sm" onClick={() => onNavigate ? onNavigate("purchaseRequests") : router.push("/inventory/purchase-requests")}>
+              View All <ArrowRight size={14} />
+            </Button>
+          </div>
+          <div className="proc-card">
+            <div className="proc-table-container">
+              <table className="proc-table proc-table--expandable">
+                <thead>
+                  <tr>
+                    <th style={{ width: "40px" }}></th>
+                    <th>PR Number</th>
+                    <th>Requester</th>
+                    <th>Department</th>
+                    <th>Date</th>
+                    <th>Required Date</th>
+                    <th>Priority</th>
+                    <th>Amount</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {purchaseRequests.length === 0 && (
+                    <tr className="proc-table-empty">
+                      <td colSpan={9}>
+                        <div className="proc-empty-state">
+                          <div className="proc-empty-state__icon">—</div>
+                          <strong>No purchase requests found.</strong>
+                          <span>Purchase request data will appear here when available.</span>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                  {purchaseRequests.map((pr) => {
+                    const prId = String(pr.id);
+                    const requester = userById[String(pr.requestor_id)];
+                    const department = deptById[String(pr.dept_id)];
+                    const lineItems = prItemsByPrId[prId] || [];
+                    const totalAmount = lineItems.reduce((sum, item) => sum + (Number(item.est_total_cost) || 0), 0);
+                    const isExpanded = expandedPrIds.has(prId);
+                    return (
+                      <React.Fragment key={prId}>
+                        <tr onClick={() => togglePrExpand(prId)} className="proc-table-row--clickable">
+                          <td>
+                            <span className="proc-expand-icon">{isExpanded ? "▼" : "▶"}</span>
+                          </td>
+                          <td className="fw-semibold">{pr.pr_no || prId}</td>
+                          <td>{requester ? `${requester.first_name} ${requester.last_name}` : displayValue(pr.requestor_id)}</td>
+                          <td>{department ? department.dept_name : displayValue(pr.dept_id)}</td>
+                          <td>{displayValue(pr.pr_date)}</td>
+                          <td>{displayValue(pr.date_required)}</td>
+                          <td><PriorityBadge priority={pr.priority} /></td>
+                          <td className="inventory-mono fw-semibold">${totalAmount.toFixed(2)}</td>
+                          <td><span className="proc-status proc-status--pending">Pending</span></td>
+                        </tr>
+                        {isExpanded && (
+                          <tr className="proc-detail-row">
+                            <td colSpan={9}>
+                              <div className="proc-detail-panel">
+                                <h4 className="proc-detail-title">Requested Items</h4>
+                                <table className="proc-detail-table">
+                                  <thead>
+                                    <tr>
+                                      <th>Item</th>
+                                      <th>SKU</th>
+                                      <th>Qty</th>
+                                      <th>Unit</th>
+                                      <th>Est. Unit Cost</th>
+                                      <th>Est. Total Cost</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {lineItems.map((item) => (
+                                      <tr key={item.id}>
+                                        <td>{item.itemName}</td>
+                                        <td>{displayValue(item.itemSku)}</td>
+                                        <td>{item.quantity}</td>
+                                        <td>{unitLookup[String(item.uom_id)] || displayValue(item.uom_id)}</td>
+                                        <td className="inventory-mono">${Number(item.est_unit_cost || 0).toFixed(2)}</td>
+                                        <td className="inventory-mono fw-semibold">${Number(item.est_total_cost || 0).toFixed(2)}</td>
+                                      </tr>
+                                    ))}
+                                    {lineItems.length === 0 && (
+                                      <tr><td colSpan={6} className="text-muted text-center py-2">No items for this request.</td></tr>
+                                    )}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
         </section>
 
@@ -482,44 +715,6 @@ export default function ProcurementView({ initialData, hideSidebar = false }) {
                 </div>
               </div>
             </article>
-          </div>
-        </section>
-
-        {/* ── Recent Purchase Requests ────────────────────── */}
-        <section className="proc-section">
-          <div className="proc-section-header">
-            <div>
-              <h2 className="proc-section-title">Recent Purchase Requests</h2>
-              <p className="proc-section-desc">Latest purchase requests from the inventory procurement process.</p>
-            </div>
-          </div>
-          <div className="proc-card">
-            <div className="proc-table-container">
-              <table className="proc-table">
-                <thead>
-                  <tr>
-                    <th>PR Number</th>
-                    <th>Project</th>
-                    <th>Material</th>
-                    <th>Requester</th>
-                    <th>Date</th>
-                    <th>Amount</th>
-                    <th>Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr className="proc-table-empty">
-                    <td colSpan={7}>
-                      <div className="proc-empty-state">
-                        <div className="proc-empty-state__icon">—</div>
-                        <strong>No purchase requests found.</strong>
-                        <span>Purchase request data will appear here when available.</span>
-                      </div>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
           </div>
         </section>
 
@@ -939,6 +1134,50 @@ export default function ProcurementView({ initialData, hideSidebar = false }) {
           .proc-table-empty:hover { background: transparent !important; }
           .proc-table-empty td { height: 150px; text-align: center; }
 
+          /* Expandable rows */
+          .proc-table-row--clickable { cursor: pointer; }
+          .proc-table-row--clickable:hover { background: #F0F6FA; }
+          .proc-expand-icon {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 20px;
+            height: 20px;
+            color: var(--proc-text-muted);
+            font-size: 11px;
+          }
+          .proc-detail-row { background: var(--proc-surface-soft) !important; cursor: default !important; }
+          .proc-detail-row:hover { background: var(--proc-surface-soft) !important; }
+          .proc-detail-panel { padding: 12px 16px 16px; }
+          .proc-detail-title {
+            margin: 0 0 10px;
+            font-size: 12px;
+            font-weight: 800;
+            color: var(--proc-text-secondary);
+          }
+          .proc-detail-table {
+            width: 100%;
+            border-collapse: collapse;
+            background: var(--proc-surface);
+            border: 1px solid var(--proc-border);
+            border-radius: var(--proc-radius-sm);
+          }
+          .proc-detail-table th,
+          .proc-detail-table td {
+            padding: 10px 12px;
+            text-align: left;
+            border-bottom: 1px solid var(--proc-border);
+            font-size: 11px;
+          }
+          .proc-detail-table th {
+            background: var(--proc-surface-soft);
+            color: var(--proc-text-muted);
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+          }
+          .proc-detail-table tbody tr:last-child td { border-bottom: none; }
+
           /* =========================================================
              STATUS
           ========================================================= */
@@ -960,6 +1199,30 @@ export default function ProcurementView({ initialData, hideSidebar = false }) {
           .proc-status--pending { background: var(--proc-warning-bg); color: var(--proc-warning); }
           .proc-status--approved { background: var(--proc-success-bg); color: var(--proc-success); }
           .proc-status--processing { background: #EAF3F9; color: var(--proc-primary); }
+
+          /* Priority badges */
+          .proc-priority {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 10px;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+          }
+          .proc-priority::before {
+            content: "";
+            width: 5px; height: 5px;
+            border-radius: 50%;
+            background: currentColor;
+          }
+          .proc-priority--low { background: #E8F4FD; color: #2E7BB4; }
+          .proc-priority--medium { background: #FFF5E8; color: #C98228; }
+          .proc-priority--high { background: #FDEEEE; color: #C94E4E; }
+          .proc-priority--urgent { background: #F3E8FF; color: #9333EA; }
+          .proc-priority--default { background: #F3F5F6; color: var(--proc-text-muted); }
 
           /* =========================================================
              OPERATIONS GRID
