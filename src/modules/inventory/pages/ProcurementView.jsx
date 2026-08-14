@@ -633,41 +633,6 @@ export default function ProcurementView({ initialData, hideSidebar = false, onNa
           </div>
         </section>
 
-        {/* ── Procurement Workflow ────────────────────────── */}
-        <section className="proc-section">
-          <div className="proc-section-header">
-            <div>
-              <h2 className="proc-section-title">Procurement Workflow</h2>
-              <p className="proc-section-desc">Current transaction flow across procurement and inventory.</p>
-            </div>
-          </div>
-          <div className="proc-workflow-card">
-            <div className="proc-workflow-scroll">
-              <div className="proc-workflow">
-                {[
-                  { icon: "PR", label: "Purchase Request", count: "—" },
-                  { icon: "A", label: "Approval", count: "—", active: true },
-                  { icon: "PO", label: "Purchase Order", count: "—", complete: true },
-                  { icon: "R", label: "Receiving", count: "—" },
-                  { icon: "V", label: "Verification", count: "—" },
-                  { icon: "SI", label: "Stock-In", count: "—" },
-                ].map((step, i) => (
-                  <React.Fragment key={step.label}>
-                    {i > 0 && <div className="proc-workflow-connector" />}
-                    <div className={`proc-workflow-step${step.active ? " proc-workflow-step--active" : ""}${step.complete ? " proc-workflow-step--complete" : ""}`}>
-                      <div className="proc-workflow-node">
-                        <div className="proc-workflow-icon">{step.icon}</div>
-                        <div className="proc-workflow-name">{step.label}</div>
-                        <div className="proc-workflow-count">{step.count}</div>
-                      </div>
-                    </div>
-                  </React.Fragment>
-                ))}
-              </div>
-            </div>
-          </div>
-        </section>
-
         {/* ── Analytics Grid ──────────────────────────────── */}
         <section className="proc-section">
           <div className="proc-analytics-grid">
