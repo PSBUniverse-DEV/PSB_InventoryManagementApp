@@ -15,7 +15,7 @@ import {
   PackageCheck, Warehouse, Pencil, Trash2, Menu,
   LayoutDashboard, BarChart3, Package, Wrench,
   Truck, ClipboardList, Columns, Settings,
-  Layers,
+  Layers, FileText,
 } from "lucide-react";
 import {
   Button, Card, Input, Modal, Badge, toastError, toastSuccess,
@@ -47,6 +47,7 @@ import StockInView from "./StockInView";
 import StockOutView from "./StockOutView";
 import ProcurementView from "./ProcurementView";
 import PurchaseRequestListView from "./PurchaseRequestListView";
+import PurchaseOrderListView from "./PurchaseOrderListView";
 import BomView from "./BomView";
 
 // ─── SUB-COMPONENTS ─────────────────────────────────────────
@@ -78,6 +79,8 @@ export default function InventoryView({ initialData }) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [view, setView] = useState("dashboard");
   const [procurementDefaultView, setProcurementDefaultView] = useState("dashboard");
+  const [editingPr, setEditingPr] = useState(null);
+  const [poInitialPrId, setPoInitialPrId] = useState(null);
   const [search, setSearch] = useState("");
   const [filterWh, setFilterWh] = useState("all");
   const [modal, setModal] = useState(null);
@@ -655,7 +658,7 @@ export default function InventoryView({ initialData }) {
             const iconMap = {
               LayoutDashboard, BarChart3, Package, Wrench,
               Warehouse, Truck, ArrowLeftRight, ClipboardList, Columns, Settings,
-              Layers, ArrowDownCircle, ArrowUpCircle,
+              Layers, ArrowDownCircle, ArrowUpCircle, FileText,
             };
             return groupOrder.map((groupName) => {
               const items = grouped[groupName];
@@ -917,15 +920,38 @@ export default function InventoryView({ initialData }) {
         )}
 
         {view === "procurement" && (
-          <ProcurementView initialData={data} hideSidebar onNavigate={setView} defaultView={procurementDefaultView} />
+          <ProcurementView initialData={data} hideSidebar onNavigate={setView} defaultView={procurementDefaultView} editingPr={editingPr} initialPrId={poInitialPrId} />
         )}
 
         {view === "purchaseRequests" && (
           <PurchaseRequestListView
             initialData={data}
-            onNavigate={setView}
+            onNavigate={handleNavClick}
             onCreateRequest={() => {
+              setEditingPr(null);
               setProcurementDefaultView("pr");
+              setView("procurement");
+            }}
+            onEditPurchaseRequest={(pr, lineItems) => {
+              setEditingPr({ ...pr, lineItems });
+              setProcurementDefaultView("pr");
+              setView("procurement");
+            }}
+            onCreatePo={(pr) => {
+              setEditingPr(null);
+              setPoInitialPrId(String(pr.id ?? pr.pr_id));
+              setProcurementDefaultView("po");
+              setView("procurement");
+            }}
+          />
+        )}
+
+        {view === "purchaseOrders" && (
+          <PurchaseOrderListView
+            initialData={data}
+            onNavigate={handleNavClick}
+            onCreateOrder={() => {
+              setProcurementDefaultView("po");
               setView("procurement");
             }}
           />

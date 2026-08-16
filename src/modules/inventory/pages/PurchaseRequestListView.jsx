@@ -2,7 +2,7 @@
 
 import React, { useCallback, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ClipboardList, Plus, ArrowLeft } from "lucide-react";
+import { ClipboardList, Plus, ArrowLeft, RefreshCw } from "lucide-react";
 import { Button, Card, Badge, toastSuccess } from "@/shared/components/ui";
 import TableZ from "@/shared/components/ui/table/TableZ";
 
@@ -18,9 +18,27 @@ function PriorityBadge({ priority }) {
   return <Badge bg={variant.bg} text={variant.text}>{priority || "—"}</Badge>;
 }
 
-function StatusBadge({ statusId }) {
-  if (statusId == null) return <Badge bg="warning" text="dark">Pending Approval</Badge>;
-  return <Badge bg="success" text="white">Approved</Badge>;
+const PENDING_STATUS_NAMES = new Set([
+  "pending",
+  "pending approval",
+  "for approval",
+  "submitted",
+  "pending review",
+  "for review",
+]);
+
+function statusBadgeVariant(name) {
+  const level = String(name || "").toLowerCase();
+  if (PENDING_STATUS_NAMES.has(level) || level === "draft") return { bg: "warning", text: "dark" };
+  if (level === "approved" || level === "completed" || level === "fulfilled" || level === "received") return { bg: "success", text: "white" };
+  if (level === "rejected" || level === "cancelled" || level === "canceled" || level === "denied") return { bg: "danger", text: "white" };
+  if (level === "saved") return { bg: "info", text: "dark" };
+  return { bg: "secondary", text: "light" };
+}
+
+function StatusBadge({ name }) {
+  const variant = statusBadgeVariant(name);
+  return <Badge bg={variant.bg} text={variant.text}>{name || "Pending Approval"}</Badge>;
 }
 
 function formatCurrency(value) {
@@ -33,16 +51,18 @@ function displayValue(value) {
   return value;
 }
 
-export default function PurchaseRequestListView({ initialData, onNavigate, onCreateRequest }) {
+export default function PurchaseRequestListView({ initialData, onNavigate, onCreateRequest, onEditPurchaseRequest, onCreatePo }) {
   const router = useRouter();
   const data = initialData || {};
   const [selectedRowId, setSelectedRowId] = useState(null);
 
   const purchaseRequests = data?.purchaseRequests || [];
   const purchaseRequestItems = data?.purchaseRequestItems || [];
+  const purchaseOrders = data?.purchaseOrders || [];
   const users = data?.users || [];
   const departments = data?.departments || [];
   const units = data?.config?.units || [];
+  const statuses = data?.purchaseRequestStatuses || [];
 
   const userById = useMemo(() => {
     const map = {};
@@ -72,9 +92,34 @@ export default function PurchaseRequestListView({ initialData, onNavigate, onCre
     return map;
   }, [purchaseRequestItems]);
 
+  const statusById = useMemo(() => {
+    const map = {};
+    statuses.forEach((s) => { map[String(s.id)] = s; });
+    return map;
+  }, [statuses]);
+
+  const statusNameForPr = useCallback((pr) => {
+    if (pr.status_id == null) return null;
+    const status = statusById[String(pr.status_id)];
+    return status?.name || null;
+  }, [statusById]);
+
+  const poPrIds = useMemo(
+    () => new Set((purchaseOrders || []).map((po) => String(po.pr_id))),
+    [purchaseOrders]
+  );
+
+  const canCreatePo = useCallback((pr) => {
+    const name = String(statusNameForPr(pr) || "").toLowerCase();
+    const isApproved = name === "approved" || name.includes("approved");
+    return isApproved && !poPrIds.has(String(pr.id ?? pr.pr_id));
+  }, [statusNameForPr, poPrIds]);
+
   const toggleExpand = useCallback((id) => {
     setSelectedRowId((prev) => (String(prev) === String(id) ? null : id));
   }, []);
+
+  const handleRefresh = useCallback(() => router.refresh(), [router]);
 
   const handleRowClick = useCallback((row) => {
     toggleExpand(row.id);
@@ -96,17 +141,23 @@ export default function PurchaseRequestListView({ initialData, onNavigate, onCre
         ...pr,
         id: prId,
         prTotal,
+        statusName: statusNameForPr(pr),
         requesterName: requester ? `${requester.first_name} ${requester.last_name}` : displayValue(pr.requestor_id),
         departmentName: department ? department.dept_name : displayValue(pr.dept_id),
       };
     }),
-    [purchaseRequests, itemsByPrId, userById, deptById]
+    [purchaseRequests, itemsByPrId, userById, deptById, statusNameForPr]
   );
 
 
   const handleEdit = useCallback((row) => {
+    if (onEditPurchaseRequest) {
+      const lineItems = itemsByPrId[row.id] || [];
+      onEditPurchaseRequest(row, lineItems);
+      return;
+    }
     toastSuccess(`Edit PR ${row.pr_no || row.id} (editor coming soon).`);
-  }, []);
+  }, [onEditPurchaseRequest, itemsByPrId]);
 
   const columns = useMemo(
     () => [
@@ -116,7 +167,10 @@ export default function PurchaseRequestListView({ initialData, onNavigate, onCre
       { key: "pr_date", label: "Date", sortable: true, render: (row) => displayValue(row.pr_date) },
       { key: "priority", label: "Priority", sortable: true, align: "center", render: (row) => <PriorityBadge priority={row.priority} /> },
       { key: "prTotal", label: "Amount", sortable: true, align: "right", render: (row) => <span className="inventory-mono fw-semibold">{formatCurrency(row.prTotal)}</span> },
-      { key: "status_id", label: "Status", sortable: true, align: "center", render: (row) => <StatusBadge statusId={row.status_id} /> },
+      { key: "statusName", label: "Status", sortable: true, align: "center", render: (row) => <StatusBadge name={row.statusName} /> },
+      { key: "remarks", label: "Remarks", sortable: true, render: (row) => (
+        <span className="text-muted small pr-remarks-cell" title={row.remarks || ""}>{row.remarks || "—"}</span>
+      ) },
     ],
     []
   );
@@ -125,8 +179,16 @@ export default function PurchaseRequestListView({ initialData, onNavigate, onCre
     () => [
       { key: "view", label: "View", type: "secondary", icon: "eye", onClick: (row) => toggleExpand(row.id) },
       { key: "edit", label: "Edit", type: "secondary", icon: "edit", onClick: (row) => handleEdit(row) },
+      {
+        key: "createPo",
+        label: "Create New Purchase Order",
+        type: "success",
+        icon: "file-invoice",
+        visible: (row) => canCreatePo(row),
+        onClick: (row) => onCreatePo ? onCreatePo(row) : undefined,
+      },
     ],
-    [toggleExpand, handleEdit]
+    [toggleExpand, handleEdit, canCreatePo, onCreatePo]
   );
 
   const detailColumns = useMemo(
@@ -167,18 +229,23 @@ export default function PurchaseRequestListView({ initialData, onNavigate, onCre
       {/* Header */}
       <header className="pr-list-header">
         <div className="pr-list-header__main">
-          <Button variant="ghost" size="sm" onClick={() => onNavigate ? onNavigate("procurement") : router.push("/inventory")} className="pr-list-back">
-            <ArrowLeft size={16} /> Back
-          </Button>
           <h1 className="pr-list-title">
             <ClipboardList size={22} className="pr-list-icon" />
             Purchase Requests
           </h1>
           <p className="pr-list-subtitle">All purchase requests with item details.</p>
         </div>
-        <Button variant="primary" size="sm" onClick={() => onCreateRequest ? onCreateRequest() : router.push("/inventory?tab=procurement")}>
-          <Plus size={14} /> New Request
-        </Button>
+        <div className="pr-list-header__actions">
+          <Button variant="ghost" size="sm" onClick={() => onNavigate ? onNavigate("procurement") : router.push("/inventory")} className="pr-list-back">
+            <ArrowLeft size={16} /> Back
+          </Button>
+          <Button variant="outline-secondary" size="sm" onClick={handleRefresh}>
+            <RefreshCw size={14} /> Refresh
+          </Button>
+          <Button variant="primary" size="sm" onClick={() => onCreateRequest ? onCreateRequest() : router.push("/inventory?tab=procurement")}>
+            <Plus size={14} /> New Request
+          </Button>
+        </div>
       </header>
 
       {/* Summary cards */}
@@ -221,7 +288,9 @@ export default function PurchaseRequestListView({ initialData, onNavigate, onCre
 
         .pr-list-header {
           display: flex;
-          flex-direction: column;
+          flex-direction: row;
+          align-items: center;
+          justify-content: space-between;
           gap: 12px;
           margin-bottom: 16px;
         }
@@ -230,8 +299,13 @@ export default function PurchaseRequestListView({ initialData, onNavigate, onCre
           flex-direction: column;
           gap: 6px;
         }
+        .pr-list-header__actions {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          flex-wrap: wrap;
+        }
         .pr-list-back {
-          align-self: flex-start;
           padding-left: 0;
         }
         .pr-list-title {
@@ -276,6 +350,14 @@ export default function PurchaseRequestListView({ initialData, onNavigate, onCre
         .pr-list-card {
           overflow: hidden;
         }
+        .pr-remarks-cell {
+          display: inline-block;
+          max-width: 240px;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          vertical-align: middle;
+        }
         .pr-detail-panel {
           padding: 12px 14px 16px;
         }
@@ -307,11 +389,6 @@ export default function PurchaseRequestListView({ initialData, onNavigate, onCre
         }
 
         @media (min-width: 768px) {
-          .pr-list-header {
-            flex-direction: row;
-            align-items: flex-start;
-            justify-content: space-between;
-          }
           .pr-list-title { font-size: 26px; }
         }
 

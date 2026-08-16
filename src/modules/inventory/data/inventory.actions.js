@@ -18,7 +18,7 @@ export async function loadInventoryData() {
 
   // Operational tables may not exist yet; wrap each call so the page still
   // renders if a table is missing. Returns empty arrays as safe fallbacks.
-  const [itemsRes, warehousesRes, transactionsRes, stockLevelsRes, suppliersRes, bomTemplateRes, usersRes, departmentsRes, purchaseRequestsRes, purchaseRequestItemsRes, purchaseOrdersRes] = await Promise.all([
+  const [itemsRes, warehousesRes, transactionsRes, stockLevelsRes, suppliersRes, bomTemplateRes, usersRes, departmentsRes, purchaseRequestsRes, purchaseRequestItemsRes, purchaseOrdersRes, purchaseRequestStatusesRes] = await Promise.all([
     safeQuery(() => supabase.from("inv_s_inventoryitem").select("*").order("name", { ascending: true })),
     safeQuery(() => supabase.from("inv_s_warehouse").select("*").order("name", { ascending: true })),
     safeQuery(() => supabase.from("inv_t_activitylog").select("*").order("created_at", { ascending: false }).limit(200)),
@@ -30,6 +30,7 @@ export async function loadInventoryData() {
     safeQuery(() => supabase.from("inv_t_purchaserequest").select("*").order("created_at", { ascending: false }).limit(200)),
     safeQuery(() => supabase.from("inv_t_purchaserequest_items").select("*, inv_s_inventoryitem(name, sku)").order("pritem_id", { ascending: true })),
     safeQuery(() => supabase.from("inv_t_purchaseorder").select("*, inv_s_supplier(name)").order("created_at", { ascending: false }).limit(200)),
+    safeQuery(() => supabase.from("inv_s_status").select("id, name, description, color").order("name", { ascending: true })),
   ]);
 
   // Compute quantity per item by aggregating stock levels
@@ -69,6 +70,10 @@ export async function loadInventoryData() {
       ...r,
       id: r.po_id,
       supplierName: r.inv_s_supplier?.name || r.supplier_name || "Unknown",
+    })),
+    purchaseRequestStatuses: (purchaseRequestStatusesRes ?? []).map((r) => ({
+      ...r,
+      id: r.id,
     })),
   };
 }
@@ -432,14 +437,31 @@ export async function resolveStatusIdByName(name) {
   if (!statusName) return null;
 
   const supabase = getSupabaseAdmin();
-  const { data, error } = await supabase
+
+  // 1. Try exact case-insensitive match first.
+  const { data: exact, error: exactError } = await supabase
     .from("inv_s_status")
     .select("id")
     .ilike("name", statusName)
     .maybeSingle();
 
-  if (error) throw new Error(`Failed to resolve status: ${error.message}`);
-  return data?.id ?? null;
+  if (exactError) throw new Error(`Failed to resolve status: ${exactError.message}`);
+  if (exact?.id != null) return exact.id;
+
+  // 2. Fall back to a contains match (e.g. "Pending Approval" matches "Pending Approvaled").
+  const { data: contains, error: containsError } = await supabase
+    .from("inv_s_status")
+    .select("id")
+    .ilike("name", `%${statusName}%`)
+    .limit(1)
+    .maybeSingle();
+
+  if (containsError) throw new Error(`Failed to resolve status: ${containsError.message}`);
+  if (contains?.id != null) return contains.id;
+
+  // 3. Log a warning so mismatches are easy to spot.
+  console.warn(`[resolveStatusIdByName] No status found matching "${statusName}" in inv_s_status.`);
+  return null;
 }
 
 //#endregion
@@ -453,9 +475,9 @@ export async function createPurchaseRequestAction(payload) {
   // Tries "Draft" first, then falls back to "Saved".
   let statusId = payload?.statusId || null;
   if (payload?.isDraft && !statusId) {
-    statusId = (await resolveStatusIdByName("Draft")) ?? (await resolveStatusIdByName("Saved"));
+    statusId = (await resolveStatusIdByName("Saved")) ?? (await resolveStatusIdByName("Pending Approval"));
   }
-
+  
   // 1. Insert header
   const { data: header, error: headerError } = await supabase
     .from("inv_t_purchaserequest")
@@ -498,6 +520,73 @@ export async function createPurchaseRequestAction(payload) {
       await supabase.from("inv_t_purchaserequest").delete().eq("pr_id", prId);
       throw new Error(`Failed to create purchase request items: ${itemsError.message}`);
     }
+  }
+
+  return header;
+}
+
+export async function updatePurchaseRequestAction(prId, payload) {
+  const supabase = getSupabaseAdmin();
+
+  // Resolve status ID. Prefer an explicit statusId from the payload; otherwise
+  // fall back to a status name lookup so a mismatch in inv_s_status never
+  // leaves status_id as null.
+  let statusId = payload?.statusId || null;
+
+  if(payload?.isDraft) {    
+   statusId = (await resolveStatusIdByName("Saved "))
+  }else
+  {
+   statusId = (await resolveStatusIdByName("Pending Approval"))
+  }
+  
+  // 1. Update header
+  const patch = {};   
+  if (payload?.prNo !== undefined) patch.pr_no = payload.prNo;
+  if (payload?.prDate !== undefined) patch.pr_date = payload.prDate;
+  if (payload?.requestorId !== undefined) patch.requestor_id = payload.requestorId;
+  if (payload?.deptId !== undefined) patch.dept_id = payload.deptId;
+  if (payload?.dateRequired !== undefined) patch.date_required = payload.dateRequired;
+  if (payload?.priority !== undefined) patch.priority = payload.priority;
+  if (payload?.remarks !== undefined) patch.remarks = payload.remarks;
+  patch.status_id = statusId;
+  patch.updated_at = new Date().toISOString();
+
+  const { data: header, error: headerError } = await supabase
+    .from("inv_t_purchaserequest")
+    .update(patch)
+    .eq("pr_id", prId)
+    .select("*")
+    .single();
+
+  if (headerError) throw new Error(`Failed to update purchase request: ${headerError.message}`);
+  if (!header) throw new Error("Failed to update purchase request: no data returned.");
+
+  const items = (payload?.items || []).filter((i) => i.itemId);
+
+  // 2. Replace line items: delete existing, then insert new set.
+  const { error: deleteError } = await supabase
+    .from("inv_t_purchaserequest_items")
+    .delete()
+    .eq("pr_id", prId);
+
+  if (deleteError) throw new Error(`Failed to update purchase request items: ${deleteError.message}`);
+
+  if (items.length > 0) {
+    const lineRows = items.map((i) => ({
+      pr_id: prId,
+      item_id: i.itemId || null,
+      quantity: Number(i.quantity) || 0,
+      uom_id: i.unitId || null,
+      est_unit_cost: i.estUnitCost ? Number(i.estUnitCost) : null,
+      est_total_cost: (Number(i.quantity) || 0) * (i.estUnitCost ? Number(i.estUnitCost) : 0),
+    }));
+
+    const { error: itemsError } = await supabase
+      .from("inv_t_purchaserequest_items")
+      .insert(lineRows);
+
+    if (itemsError) throw new Error(`Failed to update purchase request items: ${itemsError.message}`);
   }
 
   return header;
