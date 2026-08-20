@@ -18,7 +18,7 @@ export async function loadInventoryData() {
 
   // Operational tables may not exist yet; wrap each call so the page still
   // renders if a table is missing. Returns empty arrays as safe fallbacks.
-  const [itemsRes, warehousesRes, transactionsRes, stockLevelsRes, suppliersRes, bomTemplateRes, usersRes, departmentsRes, purchaseRequestsRes, purchaseRequestItemsRes, purchaseOrdersRes, purchaseRequestStatusesRes] = await Promise.all([
+  const [itemsRes, warehousesRes, transactionsRes, stockLevelsRes, suppliersRes, bomTemplateRes, usersRes, departmentsRes, purchaseRequestsRes, purchaseRequestItemsRes, purchaseOrdersRes, purchaseOrderItemsRes, purchaseRequestStatusesRes] = await Promise.all([
     safeQuery(() => supabase.from("inv_s_inventoryitem").select("*").order("name", { ascending: true })),
     safeQuery(() => supabase.from("inv_s_warehouse").select("*").order("name", { ascending: true })),
     safeQuery(() => supabase.from("inv_t_activitylog").select("*").order("created_at", { ascending: false }).limit(200)),
@@ -30,6 +30,7 @@ export async function loadInventoryData() {
     safeQuery(() => supabase.from("inv_t_purchaserequest").select("*").order("created_at", { ascending: false }).limit(200)),
     safeQuery(() => supabase.from("inv_t_purchaserequest_items").select("*, inv_s_inventoryitem(name, sku)").order("pritem_id", { ascending: true })),
     safeQuery(() => supabase.from("inv_t_purchaseorder").select("*, inv_s_supplier(name)").order("created_at", { ascending: false }).limit(200)),
+    safeQuery(() => supabase.from("inv_t_purchasorder_items").select("*, inv_s_inventoryitem(name, sku)").order("poitem_id", { ascending: true })),
     safeQuery(() => supabase.from("inv_s_status").select("id, name, description, color").order("name", { ascending: true })),
   ]);
 
@@ -57,6 +58,7 @@ export async function loadInventoryData() {
     stockLevels: (stockLevelsRes ?? []).map((r) => ({ ...r, id: r.id ?? r.stocklevel_id })),
     suppliers: (suppliersRes ?? []).map((r) => ({ ...r, id: r.id ?? r.supplier_id })),
     bomTemplates: (bomTemplateRes ?? []).map((r) => ({ ...r, id: r.id ?? r.bom_temp_id })),
+    units: config.units || [],
     users: (usersRes ?? []).map((r) => ({ ...r, id: r.user_id })),
     departments: (departmentsRes ?? []).map((r) => ({ ...r, id: r.dept_id })),
     purchaseRequests: (purchaseRequestsRes ?? []).map((r) => ({ ...r, id: r.pr_id })),
@@ -70,6 +72,12 @@ export async function loadInventoryData() {
       ...r,
       id: r.po_id,
       supplierName: r.inv_s_supplier?.name || r.supplier_name || "Unknown",
+    })),
+    purchaseOrderItems: (purchaseOrderItemsRes ?? []).map((r) => ({
+      ...r,
+      id: r.poitem_id,
+      itemName: r.inv_s_inventoryitem?.name || r.item_name || "Unknown",
+      itemSku: r.inv_s_inventoryitem?.sku || r.item_sku || "",
     })),
     purchaseRequestStatuses: (purchaseRequestStatusesRes ?? []).map((r) => ({
       ...r,
@@ -399,18 +407,118 @@ export async function deleteSupplierAction(id) {
 
 //#endregion
 
+//#region ─── BOM TEMPLATES ─────────────────────────────────────────
+
+// ─── CREATE ──────────────────────────────────────────────────
+
+export async function createBomTemplateAction(payload) {
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from("inv_s_bom_template")
+    .insert([{
+      project_name: payload?.projectName || "",
+      project_description: payload?.projectDescription || null,
+    }])
+    .select()
+    .single();
+
+  if (error) throw new Error(`Failed to create BOM template: ${error.message}`);
+  return data;
+}
+
+// ─── SAVE LINE ITEMS ────────────────────────────────────────
+
+export async function saveBomLineItemsAction(bomTempId, payload) {
+  const supabase = getSupabaseAdmin();
+  const { created = [], updated = [], deleted = [] } = payload || {};
+
+  // PHASE 1: DELETE — rows marked for removal that exist in DB
+  for (const row of deleted) {
+    if (!row.id || String(row.id).startsWith("tmp-")) continue;
+    const { error } = await supabase
+      .from("inv_s_bom_details_template")
+      .delete()
+      .eq("bom_detial_id", row.id);
+    if (error) throw new Error(`Failed to delete BOM detail ${row.id}: ${error.message}`);
+  }
+
+  // PHASE 2: CREATE — rows with temp IDs
+  for (const row of created) {
+    const itemId = await resolveItemIdBySku(supabase, row.sku);
+    if (itemId == null) {
+      console.warn(`[saveBomLineItemsAction] SKU "${row.sku}" not found — skipping.`);
+      continue;
+    }
+    const { error } = await supabase
+      .from("inv_s_bom_details_template")
+      .insert([{
+        bom_temp_id: bomTempId,
+        item_id: itemId,
+        required_qty: Number(row.requiredQty) || 1,
+        uom_id: row.uomId || null,
+      }]);
+    if (error) throw new Error(`Failed to create BOM detail: ${error.message}`);
+  }
+
+  // PHASE 3: UPDATE — existing rows with changed fields
+  for (const row of updated) {
+    if (!row.id || String(row.id).startsWith("tmp-")) continue;
+    const itemId = await resolveItemIdBySku(supabase, row.sku);
+    const patch = {};
+    if (itemId != null) patch.item_id = itemId;
+    if (row.requiredQty !== undefined) patch.required_qty = Number(row.requiredQty) || 1;
+    if (row.uomId !== undefined) patch.uom_id = row.uomId || null;
+
+    if (Object.keys(patch).length === 0) continue;
+
+    const { error } = await supabase
+      .from("inv_s_bom_details_template")
+      .update(patch)
+      .eq("bom_detial_id", row.id);
+    if (error) throw new Error(`Failed to update BOM detail ${row.id}: ${error.message}`);
+  }
+
+  // Return fresh data so the client can reset baseline
+  const { data, error } = await supabase
+    .from("inv_s_bom_details_template")
+    .select("*, inv_s_inventoryitem(sku, name), inv_s_unit(unit_id, name, abbreviation)")
+    .eq("bom_temp_id", bomTempId)
+    .order("bom_detial_id", { ascending: true });
+
+  if (error) throw new Error(`Failed to reload BOM details: ${error.message}`);
+  return data ?? [];
+}
+
+async function resolveItemIdBySku(supabase, sku) {
+  if (!sku) return null;
+  const { data, error } = await supabase
+    .from("inv_s_inventoryitem")
+    .select("item_id")
+    .eq("sku", sku)
+    .maybeSingle();
+  if (error || !data) return null;
+  return data.item_id;
+}
+
+//#endregion
+
 //#region ─── BOM TEMPLATE DETAILS ─────────────────────────────────
 
 export async function loadBomTemplateDetailsAction(bomTempId) {
   const supabase = getSupabaseAdmin();
   const { data, error } = await supabase
     .from("inv_s_bom_details_template")
-    .select("*, inv_s_inventoryitem(sku, name)")
+    .select("*, inv_s_inventoryitem(sku, name), inv_s_unit(unit_id, name, abbreviation)")
     .eq("bom_temp_id", bomTempId)
     .order("bom_detial_id", { ascending: true });
 
   if (error) throw new Error(`Failed to load BOM template details: ${error.message}`);
-  return data ?? [];
+  return (data ?? []).map((d) => ({
+    ...d,
+    uomId: d.uom_id || null,
+    uomName: d.inv_s_unit?.name || "",
+    uomAbbreviation: d.inv_s_unit?.abbreviation || "",
+  }));
 }
 
 //#endregion
@@ -471,11 +579,14 @@ export async function resolveStatusIdByName(name) {
 export async function createPurchaseRequestAction(payload) {
   const supabase = getSupabaseAdmin();
 
-  // Resolve status ID from inv_s_status when saving as draft.
-  // Tries "Draft" first, then falls back to "Saved".
+  // Resolve status ID from inv_s_status.
+  // - Saving as draft → "Saved" (falls back to "Pending Approval" if not found).
+  // - Submitting → "Pending Approval".
   let statusId = payload?.statusId || null;
   if (payload?.isDraft && !statusId) {
     statusId = (await resolveStatusIdByName("Saved")) ?? (await resolveStatusIdByName("Pending Approval"));
+  } else if (!payload?.isDraft && !statusId) {
+    statusId = await resolveStatusIdByName("Pending Approval");
   }
   
   // 1. Insert header
@@ -590,6 +701,1100 @@ export async function updatePurchaseRequestAction(prId, payload) {
   }
 
   return header;
+}
+
+export async function recallPurchaseRequestAction(prId) {
+  const supabase = getSupabaseAdmin();
+  const statusId = await resolveStatusIdByName("Recalled");
+
+  const { error } = await supabase
+    .from("inv_t_purchaserequest")
+    .update({ status_id: statusId, updated_at: new Date().toISOString() })
+    .eq("pr_id", prId);
+
+  if (error) throw new Error(`Failed to recall purchase request: ${error.message}`);
+}
+
+//#endregion
+
+//#region ─── PURCHASE ORDERS ───────────────────────────────────────
+
+export async function createPurchaseOrderAction(payload) {
+  const supabase = getSupabaseAdmin();
+
+  // Resolve status ID from inv_s_status.
+  // - Saving as draft → "Saved" (falls back to "Pending Approval" if not found).
+  // - Submitting → "Pending Approval".
+  let statusId = payload?.statusId || null;
+  if (payload?.isDraft && !statusId) {
+    statusId = (await resolveStatusIdByName("Saved")) ?? (await resolveStatusIdByName("Pending Approval"));
+  } else if (!payload?.isDraft && !statusId) {
+    statusId = await resolveStatusIdByName("Pending Approval");
+  }
+
+  // 1. Insert header
+  const { data: header, error: headerError } = await supabase
+    .from("inv_t_purchaseorder")
+    .insert([{
+      po_no: payload?.poNo || null,
+      supplier_id: payload?.supplierId || null,
+      status_id: statusId,
+      est_total_cost: payload?.estTotalCost || 0,
+      remarks: payload?.remarks || null,
+      pr_id: payload?.prId || null,
+      delivery_location: payload?.deliveryLocation || null,
+      created_at: payload?.poDate || null,
+    }])
+    .select("*")
+    .single();
+
+  if (headerError) throw new Error(`Failed to create purchase order: ${headerError.message}`);
+  if (!header) throw new Error("Failed to create purchase order: no data returned.");
+
+  const poId = header.po_id;
+  const items = (payload?.items || []).filter((i) => i.itemId);
+
+  // 2. Insert line items (if any)
+  if (items.length > 0) {
+    const lineRows = items.map((i) => ({
+      po_id: poId,
+      item_id: i.itemId || null,
+      uom_id: i.unitId || null,
+      quantity: Number(i.quantity) || 0,
+      est_unit_cost: i.unitPrice ? Number(i.unitPrice) : null,
+      est_total_cost: (Number(i.quantity) || 0) * (i.unitPrice ? Number(i.unitPrice) : 0),
+    }));
+
+    const { error: itemsError } = await supabase
+      .from("inv_t_purchasorder_items")
+      .insert(lineRows);
+
+    if (itemsError) {
+      // Rollback header on line item failure
+      await supabase.from("inv_t_purchaseorder").delete().eq("po_id", poId);
+      throw new Error(`Failed to create purchase order items: ${itemsError.message}`);
+    }
+  }
+
+  return header;
+}
+
+export async function updatePurchaseOrderAction(poId, payload) {
+  const supabase = getSupabaseAdmin();
+
+  // Resolve status ID. Prefer an explicit statusId from the payload; otherwise
+  // fall back to a status name lookup so a mismatch in inv_s_status never
+  // leaves status_id as null.
+  let statusId = payload?.statusId || null;
+
+  if (payload?.isDraft) {
+    statusId = (await resolveStatusIdByName("Saved")) ?? (await resolveStatusIdByName("Pending Approval"));
+  } else {
+    statusId = await resolveStatusIdByName("Pending Approval");
+  }
+
+  // 1. Update header
+  const patch = {};
+  if (payload?.poNo !== undefined) patch.po_no = payload.poNo;
+  if (payload?.supplierId !== undefined) patch.supplier_id = payload.supplierId;
+  if (payload?.estTotalCost !== undefined) patch.est_total_cost = payload.estTotalCost;
+  if (payload?.remarks !== undefined) patch.remarks = payload.remarks;
+  if (payload?.prId !== undefined) patch.pr_id = payload.prId;
+  if (payload?.deliveryLocation !== undefined) patch.delivery_location = payload.deliveryLocation;
+  patch.status_id = statusId;
+  patch.updated_at = new Date().toISOString();
+
+  const { data: header, error: headerError } = await supabase
+    .from("inv_t_purchaseorder")
+    .update(patch)
+    .eq("po_id", poId)
+    .select("*")
+    .single();
+
+  if (headerError) throw new Error(`Failed to update purchase order: ${headerError.message}`);
+  if (!header) throw new Error("Failed to update purchase order: no data returned.");
+
+  const items = (payload?.items || []).filter((i) => i.itemId);
+
+  // 2. Replace line items: delete existing, then insert new set.
+  const { error: deleteError } = await supabase
+    .from("inv_t_purchasorder_items")
+    .delete()
+    .eq("po_id", poId);
+
+  if (deleteError) throw new Error(`Failed to update purchase order items: ${deleteError.message}`);
+
+  if (items.length > 0) {
+    const lineRows = items.map((i) => ({
+      po_id: poId,
+      item_id: i.itemId || null,
+      uom_id: i.unitId || null,
+      quantity: Number(i.quantity) || 0,
+      est_unit_cost: i.unitPrice ? Number(i.unitPrice) : null,
+      est_total_cost: (Number(i.quantity) || 0) * (i.unitPrice ? Number(i.unitPrice) : 0),
+    }));
+
+    const { error: itemsError } = await supabase
+      .from("inv_t_purchasorder_items")
+      .insert(lineRows);
+
+    if (itemsError) throw new Error(`Failed to update purchase order items: ${itemsError.message}`);
+  }
+
+  return header;
+}
+
+export async function recallPurchaseOrderAction(poId) {
+  const supabase = getSupabaseAdmin();
+  const statusId = await resolveStatusIdByName("Recalled");
+
+  const { error } = await supabase
+    .from("inv_t_purchaseorder")
+    .update({ status_id: statusId, updated_at: new Date().toISOString() })
+    .eq("po_id", poId);
+
+  if (error) throw new Error(`Failed to recall purchase order: ${error.message}`);
+}
+
+//#endregion
+
+//#region ─── PENDING PR APPROVALS ─────────────────────────────────
+
+/**
+ * Load purchase requests that currently have a pending stage instance in the
+ * workflow engine.  A stage is considered pending when its wfk_t_stageinstance
+ * status_id matches the "Pending" / "Pending Approval" status (and acted_at
+ * is null).
+ *
+ * Returns an array of approval rows enriched with PR header, requester and
+ * department names, line items, current stage info, and estimated totals.
+ */
+export async function loadPendingPrApprovalsAction() {
+  const supabase = getSupabaseAdmin();
+
+  // 1. Resolve the pending status ID for a stage instance.
+  const pendingStatusId = await resolveStatusIdByName("Pending Approval") ?? (await resolveStatusIdByName("Pending"));
+
+  // 2. Fetch pending stage instances.  If the workflow tables are missing or
+  //    the query fails for any reason, recover gracefully and return [].
+  let stages = [];
+  try {
+    const { data, error } = await supabase
+      .from("wfk_t_stageinstance")
+      .select("stageinstance_id, instance_id, wfs_id, status_id, created_at, acted_at, acted_by, comments")
+      .is("acted_at", null)
+      .eq("status_id", pendingStatusId);
+
+    if (error) {
+      console.warn("[loadPendingPrApprovalsAction] Stage query failed:", error.message);
+      return { approvals: [], error: null };
+    }
+    stages = data ?? [];
+  } catch (err) {
+    console.warn("[loadPendingPrApprovalsAction] Stage query threw:", err.message);
+    return { approvals: [], error: null };
+  }
+
+  if (!stages.length) {
+    return { approvals: [], error: null };
+  }
+
+  // 3. Fetch the workflow instances for those stages to get document_id (pr_id).
+  const instanceIds = stages.map((s) => s.instance_id).filter(Boolean);
+  let instances = [];
+  try {
+    const { data, error } = await supabase
+      .from("wfk_t_workflowinstance")
+      .select("instance_id, document_id, app_id, wf_id, status_id, started_at, created_by")
+      .in("instance_id", instanceIds);
+
+    if (error) {
+      console.warn("[loadPendingPrApprovalsAction] Workflow instance query failed:", error.message);
+      return { approvals: [], error: null };
+    }
+    instances = data ?? [];
+  } catch (err) {
+    console.warn("[loadPendingPrApprovalsAction] Workflow instance query threw:", err.message);
+    return { approvals: [], error: null };
+  }
+
+  const instanceById = Object.fromEntries(instances.map((i) => [String(i.instance_id), i]));
+  const prIds = instances
+    .map((i) => i.document_id)
+    .filter(Boolean)
+    .map((id) => Number(id));
+
+  if (!prIds.length) {
+    return { approvals: [], error: null };
+  }
+
+  // 4. Fetch PR headers and line items for the linked documents.
+  let prHeaders = [];
+  let prItems = [];
+  try {
+    const [headersRes, itemsRes] = await Promise.all([
+      supabase.from("inv_t_purchaserequest").select("*").in("pr_id", prIds),
+      supabase.from("inv_t_purchaserequest_items").select("*").in("pr_id", prIds),
+    ]);
+
+    if (headersRes.error) console.warn("[loadPendingPrApprovalsAction] PR headers query failed:", headersRes.error.message);
+    if (itemsRes.error) console.warn("[loadPendingPrApprovalsAction] PR items query failed:", itemsRes.error.message);
+
+    prHeaders = headersRes.data ?? [];
+    prItems = itemsRes.data ?? [];
+  } catch (err) {
+    console.warn("[loadPendingPrApprovalsAction] PR query threw:", err.message);
+    return { approvals: [], error: null };
+  }
+
+  const prById = Object.fromEntries(prHeaders.map((pr) => [String(pr.pr_id), pr]));
+  const itemsByPrId = {};
+  for (const item of prItems) {
+    const prId = String(item.pr_id);
+    if (!itemsByPrId[prId]) itemsByPrId[prId] = [];
+    itemsByPrId[prId].push(item);
+  }
+
+  // 5. Fetch supporting reference data for display enrichment.
+  const [usersRes, deptsRes, itemsRes] = await Promise.all([
+    safeQuery(() => supabase.from("psb_s_user").select("user_id, first_name, last_name, email")),
+    safeQuery(() => supabase.from("psb_s_department").select("dept_id, dept_name")),
+    safeQuery(() => supabase.from("inv_s_inventoryitem").select("item_id, name, sku")),
+  ]);
+
+  const users = (usersRes ?? []).map((r) => ({ ...r, id: r.user_id }));
+  const depts = (deptsRes ?? []).map((r) => ({ ...r, id: r.dept_id }));
+  const items = (itemsRes ?? []).map((r) => ({ ...r, id: r.item_id }));
+
+  const userById = Object.fromEntries(users.map((u) => [String(u.id), u]));
+  const deptById = Object.fromEntries(depts.map((d) => [String(d.id), d]));
+  const itemById = Object.fromEntries(items.map((i) => [String(i.id), i]));
+
+  // 6. Build enriched approval rows.
+  const approvals = [];
+  for (const stage of stages) {
+    const instance = instanceById[String(stage.instance_id)];
+    if (!instance) continue;
+
+    const pr = prById[String(instance.document_id)];
+    if (!pr) continue;
+
+    const requester = userById[String(pr.requestor_id)];
+    const department = deptById[String(pr.dept_id)];
+    const lineItems = (itemsByPrId[String(pr.pr_id)] || []).map((li) => {
+      const item = itemById[String(li.item_id)];
+      return {
+        ...li,
+        itemName: item?.name || li.item_name || "Unknown",
+        itemSku: item?.sku || li.item_sku || "",
+      };
+    });
+
+    const totalAmount = lineItems.reduce((sum, li) => sum + (Number(li.est_total_cost) || 0), 0);
+
+    approvals.push({
+      stageinstanceId: stage.stageinstance_id,
+      instanceId: stage.instance_id,
+      documentId: instance.document_id,
+      prId: pr.pr_id,
+      prNo: pr.pr_no || pr.pr_id,
+      prDate: pr.pr_date,
+      priority: pr.priority,
+      remarks: pr.remarks,
+      requestorId: pr.requestor_id,
+      deptId: pr.dept_id,
+      createdAt: pr.created_at,
+      requesterName: requester ? `${requester.first_name} ${requester.last_name}`.trim() : pr.requestor_id,
+      departmentName: department?.dept_name || pr.dept_id,
+      stageCreatedAt: stage.created_at,
+      lineItems,
+      totalAmount,
+    });
+  }
+
+  return { approvals, error: null };
+}
+
+/**
+ * Record an approval or rejection against a workflow stage instance.
+ * Updates wfk_t_stageinstance with the acting user, timestamp, comments and
+ * a new status_id derived from the supplied status name.
+ */
+export async function actOnPurchaseRequestApprovalAction({
+  stageinstanceId,
+  decision, // "approve" | "reject"
+  comments = "",
+  actorUserId,
+  statusName,
+}) {
+  const supabase = getSupabaseAdmin();
+
+  if (!stageinstanceId) throw new Error("Stage instance ID is required.");
+  if (!["approve", "reject"].includes(decision)) throw new Error("Decision must be 'approve' or 'reject'.");
+
+  const resolvedStatusName = decision === "approve" ? statusName || "Approved" : statusName || "Rejected";
+  const statusId = await resolveStatusIdByName(resolvedStatusName);
+
+  const { error } = await supabase
+    .from("wfk_t_stageinstance")
+    .update({
+      acted_at: new Date().toISOString(),
+      acted_by: actorUserId || null,
+      comments: comments || null,
+      status_id: statusId,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("stageinstance_id", stageinstanceId);
+
+  if (error) throw new Error(`Failed to ${decision} approval: ${error.message}`);
+}
+
+//#endregion
+
+//#region ─── PROJECT BOM ────────────────────────────────────────────
+
+export async function saveProjectBomAction(payload) {
+  const supabase = getSupabaseAdmin();
+
+  // 1. Insert BOM header into inv_t_bom
+  const { data: bom, error: bomError } = await supabase
+    .from("inv_t_bom")
+    .insert([{
+      project_id: payload?.projectId || null,
+      bom_no: payload?.bomNo || null,
+      status_Id: payload?.statusId || null,
+      remarks: payload?.remarks || null,
+      created_by: payload?.createdBy || null,
+      bom_temp_id: payload?.bomTempId || null,
+      bomt_spec: payload?.bomtSpec || null,
+    }])
+    .select()
+    .single();
+
+  if (bomError) throw new Error(`Failed to save BOM: ${bomError.message}`);
+  if (!bom) throw new Error("Failed to save BOM: no data returned.");
+
+  const bomId = bom.bom_id;
+
+  // 2. Insert BOM line items into inv_t_bom_details
+  const lineItems = (payload?.lineItems || []).filter((li) => li.itemId);
+  if (lineItems.length > 0) {
+    const detailRows = lineItems.map((li) => ({
+      bom_id: bomId,
+      item_id: li.itemId,
+      quantity: Number(li.quantity) || 0,
+      uom_id: li.uomId || null,
+      remarks: li.remarks || null,
+    }));
+
+    const { error: detailsError } = await supabase
+      .from("inv_t_bom_details")
+      .insert(detailRows);
+
+    if (detailsError) {
+      // Rollback header on line item failure
+      await supabase.from("inv_t_bom").delete().eq("bom_id", bomId);
+      throw new Error(`Failed to save BOM line items: ${detailsError.message}`);
+    }
+  }
+
+  return bom;
+}
+
+export async function loadProjectBomByIdAction(bomId) {
+  const supabase = getSupabaseAdmin();
+
+  // 1. Fetch BOM header with joined project info
+  const { data: bom, error: bomError } = await supabase
+    .from("inv_t_bom")
+    .select("*, proj_t_projects(client_name, formatted_address, city, state_code, address_line_1, state, postal_code, country, dealer, invoice_number, order_received_at)")
+    .eq("bom_id", bomId)
+    .single();
+
+  if (bomError) throw new Error(`Failed to load BOM: ${bomError.message}`);
+  if (!bom) throw new Error("BOM not found.");
+
+  // 2. Fetch line items with joined item and unit info
+  let details = [];
+  try {
+    const { data: detailsData, error: detailsError } = await supabase
+      .from("inv_t_bom_details")
+      .select("*, inv_s_inventoryitem(sku, name, cost), inv_s_unit(unit_id, name, abbreviation)")
+      .eq("bom_id", bomId)
+      .order("bom_details_id", { ascending: true });
+
+    if (!detailsError && detailsData) {
+      details = detailsData;
+    } else if (detailsError) {
+      console.warn("[loadProjectBomByIdAction] Details query failed, returning BOM without line items:", detailsError.message);
+    }
+  } catch (err) {
+    console.warn("[loadProjectBomByIdAction] Details query threw, returning BOM without line items:", err);
+  }
+
+  return {
+    id: bom.bom_id,
+    bomNo: bom.bom_no || "—",
+    projectId: bom.project_id,
+    projectName: bom.proj_t_projects?.client_name || "—",
+    spec: bom.proj_t_projects?.formatted_address || "—",
+    statusId: bom.status_Id,
+    statusName: "Draft",
+    remarks: bom.remarks || "",
+    createdBy: bom.created_by,
+    createdAt: bom.created_at,
+    bomTempId: bom.bom_temp_id || null,
+    bomtSpec: bom.bomt_spec || null,
+    customer: bom.proj_t_projects ? {
+      clientName: bom.proj_t_projects.client_name,
+      formattedAddress: bom.proj_t_projects.formatted_address,
+      city: bom.proj_t_projects.city,
+      stateCode: bom.proj_t_projects.state_code,
+      addressLine1: bom.proj_t_projects.address_line_1,
+      state: bom.proj_t_projects.state,
+      postalCode: bom.proj_t_projects.postal_code,
+      country: bom.proj_t_projects.country,
+      dealer: bom.proj_t_projects.dealer,
+      invoiceNumber: bom.proj_t_projects.invoice_number,
+      orderReceivedAt: bom.proj_t_projects.order_received_at,
+    } : null,
+    lineItems: details.map((d) => ({
+      id: d.bom_details_id,
+      itemId: d.item_id,
+      sku: d.inv_s_inventoryitem?.sku || "",
+      name: d.inv_s_inventoryitem?.name || "",
+      cost: d.inv_s_inventoryitem?.cost || 0,
+      quantity: Number(d.quantity) || 0,
+      uomId: d.uom_id || null,
+      uomName: d.inv_s_unit?.name || "",
+      uomAbbreviation: d.inv_s_unit?.abbreviation || "",
+      remarks: d.remarks || "",
+    })),
+  };
+}
+
+export async function updateProjectBomAction(bomId, payload) {
+  const supabase = getSupabaseAdmin();
+
+  // 1. Update BOM header
+  const patch = {};
+  if (payload?.bomNo !== undefined) patch.bom_no = payload.bomNo;
+  if (payload?.projectId !== undefined) patch.project_id = payload.projectId;
+  if (payload?.statusId !== undefined) patch.status_Id = payload.statusId;
+  if (payload?.remarks !== undefined) patch.remarks = payload.remarks;
+  if (payload?.bomTempId !== undefined) patch.bom_temp_id = payload.bomTempId;
+  if (payload?.bomtSpec !== undefined) patch.bomt_spec = payload.bomtSpec;
+
+  if (Object.keys(patch).length > 0) {
+    const { error: headerError } = await supabase
+      .from("inv_t_bom")
+      .update(patch)
+      .eq("bom_id", bomId);
+
+    if (headerError) throw new Error(`Failed to update BOM: ${headerError.message}`);
+  }
+
+  // 2. Replace line items if provided
+  if (payload?.lineItems !== undefined) {
+    // Delete existing
+    const { error: deleteError } = await supabase
+      .from("inv_t_bom_details")
+      .delete()
+      .eq("bom_id", bomId);
+
+    if (deleteError) throw new Error(`Failed to clear BOM details: ${deleteError.message}`);
+
+    // Insert new set
+    const items = (payload.lineItems || []).filter((li) => li.itemId);
+    if (items.length > 0) {
+      const detailRows = items.map((li) => ({
+        bom_id: bomId,
+        item_id: li.itemId,
+        quantity: Number(li.quantity) || 0,
+        uom_id: li.uomId || null,
+        remarks: li.remarks || null,
+      }));
+
+      const { error: insertError } = await supabase
+        .from("inv_t_bom_details")
+        .insert(detailRows);
+
+      if (insertError) throw new Error(`Failed to save BOM line items: ${insertError.message}`);
+    }
+  }
+
+  // Return updated BOM (reload may fail if details table has issues, but data is already saved)
+  try {
+    return await loadProjectBomByIdAction(bomId);
+  } catch (reloadErr) {
+    console.warn("[updateProjectBomAction] BOM saved but reload failed:", reloadErr.message);
+    // Return a minimal success object so the client doesn't throw
+    return { id: bomId, remarks: payload?.remarks || "", lineItems: payload?.lineItems || [] };
+  }
+}
+
+export async function loadProjectBomDataAction() {
+  const supabase = getSupabaseAdmin();
+
+  const { data, error } = await supabase
+    .from("inv_t_bom")
+    .select("*, proj_t_projects(client_name, formatted_address, city, state_code)")
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    console.error("[loadProjectBomDataAction]", error);
+    return [];
+  }
+
+  return (data || []).map((r) => ({
+    id: r.bom_id,
+    bomNo: r.bom_no || "—",
+    projectId: r.project_id,
+    projectName: r.proj_t_projects?.client_name || "—",
+    spec: r.proj_t_projects?.formatted_address || "—",
+    statusId: r.status_Id,
+    statusName: "Draft",
+    remarks: r.remarks || "",
+    createdBy: r.created_by,
+    createdAt: r.created_at,
+    bomTempId: r.bom_temp_id || null,
+    bomtSpec: r.bomt_spec || null,
+  }));
+}
+
+//#region ─── CUSTOMER SEARCH (proj_t_projects) ──────────────────────
+
+export async function searchCustomersAction(query) {
+  const supabase = getSupabaseAdmin();
+  const trimmed = (query || "").trim();
+  if (!trimmed) return [];
+
+  const { data, error } = await supabase
+    .from("proj_t_projects")
+    .select("id, client_name, formatted_address, address_line_1, city, state, state_code, postal_code, country, dealer, order_received_at, scheduled_project_start, install_start, project_subtotal, status_id, invoice_number")
+    .ilike("client_name", `%${trimmed}%`)
+    .order("client_name", { ascending: true })
+    .limit(20);
+
+  if (error) {
+    console.error("[searchCustomersAction]", error);
+    return [];
+  }
+  return data ?? [];
+}
+
+//#endregion
+
+//#region ─── PO RECEIVING ───────────────────────────────────────────
+
+export async function loadOpenPOsAction() {
+  const supabase = getSupabaseAdmin();
+
+  const { data, error } = await supabase
+    .from("inv_t_purchaseorder")
+    .select("*, inv_s_supplier(name), inv_s_status(name)")
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    console.error("[loadOpenPOsAction]", error);
+    return [];
+  }
+
+  // Filter to open POs (not completed/cancelled/recalled) using actual status name from inv_s_status
+  const openPOs = (data || []).filter((po) => {
+    const statusName = (po.inv_s_status?.name || "").toLowerCase();
+    return statusName !== "completed" && statusName !== "cancelled" && statusName !== "recalled";
+  });
+
+  // Fetch line items for each open PO
+  const poIds = openPOs.map((po) => po.po_id);
+  let allItems = [];
+  if (poIds.length > 0) {
+    const { data: items, error: itemsError } = await supabase
+      .from("inv_t_purchasorder_items")
+      .select("*, inv_s_inventoryitem(sku, name), inv_s_unit(unit_id, name, abbreviation)")
+      .in("po_id", poIds)
+      .order("poitem_id", { ascending: true });
+
+    if (!itemsError && items) {
+      allItems = items;
+    }
+  }
+
+  // Get already received quantities from stock levels
+  const { data: stockLevels } = await supabase
+    .from("inv_t_stockslevels")
+    .select("item_id, quantity, po_no")
+    .in("po_no", openPOs.map((po) => po.po_no).filter(Boolean));
+
+  const receivedByPoAndItem = {};
+  if (stockLevels) {
+    for (const sl of stockLevels) {
+      if (!sl.po_no) continue;
+      const key = `${sl.po_no}_${sl.item_id}`;
+      receivedByPoAndItem[key] = (receivedByPoAndItem[key] || 0) + (Number(sl.quantity) || 0);
+    }
+  }
+
+  return openPOs.map((po) => {
+    const poItems = allItems
+      .filter((i) => i.po_id === po.po_id)
+      .map((i) => {
+        const key = `${po.po_no}_${i.item_id}`;
+        return {
+          id: i.poitem_id,
+          itemId: i.item_id,
+          sku: i.inv_s_inventoryitem?.sku || "",
+          name: i.inv_s_inventoryitem?.name || "",
+          orderedQty: Number(i.quantity) || 0,
+          uomId: i.uom_id || null,
+          uomName: i.inv_s_unit?.name || "",
+          uomAbbreviation: i.inv_s_unit?.abbreviation || "",
+          unitPrice: i.est_unit_cost || 0,
+          receivedQty: receivedByPoAndItem[key] || 0,
+        };
+      });
+
+    return {
+      id: po.po_id,
+      poNo: po.po_no || "—",
+      supplierId: po.supplier_id,
+      supplierName: po.inv_s_supplier?.name || "Unknown",
+      status: po.status || po.po_status || "Draft",
+      estTotalCost: po.est_total_cost || 0,
+      remarks: po.remarks || "",
+      createdAt: po.created_at,
+      deliveryLocation: po.delivery_location || "",
+      lineItems: poItems,
+    };
+  });
+}
+
+export async function receivePOItemsAction(poId, payload) {
+  const supabase = getSupabaseAdmin();
+  const { items = [], warehouseId, deliveryNo, remarks } = payload || {};
+
+  if (!items.length) throw new Error("No items to receive.");
+
+  // Get PO info for logging
+  const { data: po } = await supabase
+    .from("inv_t_purchaseorder")
+    .select("po_no, supplier_id")
+    .eq("po_id", poId)
+    .single();
+
+  const poNo = po?.po_no || "";
+
+  for (const item of items) {
+    const qty = Number(item.receiveQty) || 0;
+    if (qty <= 0) continue;
+
+    // Get item info
+    const { data: invItem } = await supabase
+      .from("inv_s_inventoryitem")
+      .select("name, sku, unit_id")
+      .eq("item_id", item.itemId)
+      .maybeSingle();
+
+    // Create stock level record
+    await createStockLevelAction({
+      itemId: item.itemId,
+      warehouseId: warehouseId || null,
+      quantity: qty,
+      unitId: invItem?.unit_id || item.uomId || null,
+      supplierId: po?.supplier_id || null,
+      poNo: poNo,
+      deliveryNo: deliveryNo || null,
+      remarks: remarks || null,
+    });
+
+    // Log transaction
+    await logTransactionAction({
+      type: "Stock In",
+      itemId: item.itemId,
+      itemName: invItem?.name || item.name || "Unknown",
+      sku: invItem?.sku || item.sku || "",
+      warehouseId: warehouseId || null,
+      detail: `PO Receiving: +${qty} (${poNo})`,
+      qtyChange: qty,
+    }).catch(() => {});
+  }
+
+  // Determine PO status based on total received vs total ordered
+  const { data: poItems } = await supabase
+    .from("inv_t_purchasorder_items")
+    .select("item_id, quantity")
+    .eq("po_id", poId);
+
+  const totalOrdered = (poItems || []).reduce((sum, i) => sum + (Number(i.quantity) || 0), 0);
+
+  const { data: receivedLevels } = await supabase
+    .from("inv_t_stockslevels")
+    .select("quantity")
+    .eq("po_no", poNo);
+
+  const totalReceived = (receivedLevels || []).reduce((sum, sl) => sum + (Number(sl.quantity) || 0), 0);
+
+  const statusName = totalReceived >= totalOrdered ? "Completed" : "Partial";
+  const statusId = await resolveStatusIdByName(statusName);
+
+  if (statusId) {
+    await supabase
+      .from("inv_t_purchaseorder")
+      .update({ status_id: statusId })
+      .eq("po_id", poId);
+  }
+
+  return { success: true, poNo, statusName };
+}
+
+//#endregion
+
+//#region ─── BOM ALLOCATION ─────────────────────────────────────────
+
+export async function allocateBomStockAction(bomId, payload) {
+  const supabase = getSupabaseAdmin();
+  const { warehouseId, lineItems = [] } = payload || {};
+
+  if (!bomId) throw new Error("BOM ID is required for allocation.");
+  if (!lineItems.length) throw new Error("No line items to allocate.");
+
+  // Resolve "Allocated" status ID
+  const statusId = await resolveStatusIdByName("Allocated");
+  if (!statusId) {
+    console.warn("[allocateBomStockAction] 'Allocated' status not found in inv_s_status. Allocation will proceed without status_id.");
+  }
+
+  for (const li of lineItems) {
+    const qty = Number(li.quantity) || 0;
+    if (qty <= 0) continue;
+
+    const { error } = await supabase
+      .from("inv_t_allocation")
+      .insert([{
+        bom_id: bomId,
+        bom_details_id: li.bomDetailsId || null,
+        warehouse_id: warehouseId || null,
+        item_id: li.itemId || null,
+        quantity: qty,
+        status_id: statusId || null,
+        created_by: null,
+      }]);
+
+    if (error) {
+      console.error("[allocateBomStockAction] Failed to insert allocation:", error.message);
+      throw new Error(`Failed to allocate item ${li.itemId}: ${error.message}`);
+    }
+
+    // Log transaction
+    await logTransactionAction({
+      type: "Allocation",
+      itemId: li.itemId,
+      itemName: li.itemName || "",
+      sku: li.sku || "",
+      warehouseId: warehouseId || null,
+      detail: `Allocated ${qty} for BOM ${bomId}`,
+      qtyChange: -qty,
+    }).catch(() => {});
+  }
+
+  return { success: true, allocatedCount: lineItems.length };
+}
+
+//#endregion
+
+//#region ─── BOM RELEASE ────────────────────────────────────────────
+
+export async function loadBOMsForReleaseAction() {
+  const supabase = getSupabaseAdmin();
+
+  const { data, error } = await supabase
+    .from("inv_t_bom")
+    .select("*, proj_t_projects(client_name, formatted_address)")
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    console.error("[loadBOMsForReleaseAction]", error);
+    return [];
+  }
+
+  const boms = data || [];
+  const bomIds = boms.map((b) => b.bom_id);
+
+  // Fetch line items for all BOMs
+  let allDetails = [];
+  if (bomIds.length > 0) {
+    const { data: details, error: detailsError } = await supabase
+      .from("inv_t_bom_details")
+      .select("*, inv_s_inventoryitem(sku, name), inv_s_unit(unit_id, name, abbreviation)")
+      .in("bom_id", bomIds)
+      .order("bom_details_id", { ascending: true });
+
+    if (!detailsError && details) {
+      allDetails = details;
+    }
+  }
+
+  // Get available stock per item (all stock levels)
+  const { data: stockLevels } = await supabase
+    .from("inv_t_stockslevels")
+    .select("item_id, quantity, remarks");
+
+  const availableByItem = {};
+  const releasedByBomAndItem = {}; // key: "bomNo_itemId" → total released qty
+  if (stockLevels) {
+    for (const sl of stockLevels) {
+      availableByItem[sl.item_id] = (availableByItem[sl.item_id] || 0) + (Number(sl.quantity) || 0);
+      // Track released quantities (negative stock levels with BOM Release remarks)
+      if (sl.remarks && sl.remarks.includes("BOM Release:")) {
+        const bomNoFromRemarks = sl.remarks.split("BOM Release: ")[1]?.trim();
+        if (bomNoFromRemarks) {
+          const key = `${bomNoFromRemarks}_${sl.item_id}`;
+          releasedByBomAndItem[key] = (releasedByBomAndItem[key] || 0) + Math.abs(Number(sl.quantity) || 0);
+        }
+      }
+    }
+  }
+
+  // Get allocated quantities per item
+  const { data: allocations } = await supabase
+    .from("inv_t_allocation")
+    .select("item_id, quantity");
+
+  const allocatedByItem = {};
+  if (allocations) {
+    for (const a of allocations) {
+      allocatedByItem[a.item_id] = (allocatedByItem[a.item_id] || 0) + (Number(a.quantity) || 0);
+    }
+  }
+
+  return boms.map((bom) => {
+    const bomDetails = allDetails.filter((d) => d.bom_id === bom.bom_id);
+    return {
+      id: bom.bom_id,
+      bomNo: bom.bom_no || "—",
+      projectName: bom.proj_t_projects?.client_name || "—",
+      spec: bom.proj_t_projects?.formatted_address || bom.bomt_spec || "—",
+      createdAt: bom.created_at,
+      lineItems: bomDetails.map((d) => {
+        const key = `${bom.bom_no}_${d.item_id}`;
+        const totalStock = availableByItem[d.item_id] || 0;
+        const allocated = allocatedByItem[d.item_id] || 0;
+        return {
+          id: d.bom_details_id,
+          itemId: d.item_id,
+          sku: d.inv_s_inventoryitem?.sku || "",
+          name: d.inv_s_inventoryitem?.name || "",
+          requiredQty: Number(d.quantity) || 0,
+          uomId: d.uom_id || null,
+          uomName: d.inv_s_unit?.name || "",
+          uomAbbreviation: d.inv_s_unit?.abbreviation || "",
+          availableQty: Math.max(0, totalStock - allocated),
+          releasedQty: releasedByBomAndItem[key] || 0,
+        };
+      }),
+    };
+  });
+}
+
+export async function releaseBOMItemsAction(bomId, payload) {
+  const supabase = getSupabaseAdmin();
+  const { items = [], warehouseId, remarks } = payload || {};
+
+  if (!items.length) throw new Error("No items to release.");
+
+  // Get BOM info for logging
+  const { data: bom } = await supabase
+    .from("inv_t_bom")
+    .select("bom_no")
+    .eq("bom_id", bomId)
+    .single();
+
+  const bomNo = bom?.bom_no || "";
+
+  for (const item of items) {
+    const qty = Number(item.releaseQty) || 0;
+    if (qty <= 0) continue;
+
+    // Get item info
+    const { data: invItem } = await supabase
+      .from("inv_s_inventoryitem")
+      .select("name, sku, unit_id")
+      .eq("item_id", item.itemId)
+      .maybeSingle();
+
+    // Create stock level record with negative quantity (stock out)
+    await createStockLevelAction({
+      itemId: item.itemId,
+      warehouseId: warehouseId || null,
+      quantity: -qty,
+      unitId: invItem?.unit_id || item.uomId || null,
+      poNo: null,
+      deliveryNo: null,
+      remarks: remarks || `BOM Release: ${bomNo}`,
+    });
+
+    // Log transaction
+    await logTransactionAction({
+      type: "Stock Out",
+      itemId: item.itemId,
+      itemName: invItem?.name || item.name || "Unknown",
+      sku: invItem?.sku || item.sku || "",
+      warehouseId: warehouseId || null,
+      detail: `BOM Release: -${qty} (${bomNo})`,
+      qtyChange: -qty,
+    }).catch(() => {});
+
+    // Update allocation: deduct released qty from allocated quantity
+    if (item.bomDetailsId) {
+      const { data: allocation } = await supabase
+        .from("inv_t_allocation")
+        .select("allocation_id, quantity")
+        .eq("bom_details_id", item.bomDetailsId)
+        .eq("item_id", item.itemId)
+        .maybeSingle();
+
+      if (allocation) {
+        const newQty = Math.max(0, (Number(allocation.quantity) || 0) - qty);
+        const { data: currentAlloc } = await supabase
+          .from("inv_t_allocation")
+          .select("released_qty")
+          .eq("allocation_id", allocation.allocation_id)
+          .maybeSingle();
+        const newReleasedQty = (Number(currentAlloc?.released_qty) || 0) + qty;
+        await supabase
+          .from("inv_t_allocation")
+          .update({ quantity: newQty, released_qty: newReleasedQty })
+          .eq("allocation_id", allocation.allocation_id);
+      }
+    }
+  }
+
+  return { success: true, bomNo };
+}
+
+//#endregion
+
+//#region ─── ALL MATERIALS ──────────────────────────────────────────
+
+export async function loadAllMaterialsAction() {
+  const supabase = getSupabaseAdmin();
+
+  // 1. Get all materials
+  const { data: items, error: itemsError } = await supabase
+    .from("inv_s_inventoryitem")
+    .select("*")
+    .eq("classification", "Material")
+    .order("name", { ascending: true });
+
+  if (itemsError) {
+    console.error("[loadAllMaterialsAction]", itemsError);
+    return [];
+  }
+
+  const materialItems = items || [];
+  const itemIds = materialItems.map((i) => i.item_id);
+
+  // 2. Get stock level details per item (with warehouse and supplier)
+  const { data: stockLevels } = await supabase
+    .from("inv_t_stockslevels")
+    .select("*, inv_s_warehouse(name), inv_s_supplier(name), inv_s_unit(unit_id, name, abbreviation)");
+
+  const totalStockByItem = {};
+  const stockDetailsByItem = {};
+  if (stockLevels) {
+    for (const sl of stockLevels) {
+      totalStockByItem[sl.item_id] = (totalStockByItem[sl.item_id] || 0) + (Number(sl.quantity) || 0);
+      if (!stockDetailsByItem[sl.item_id]) stockDetailsByItem[sl.item_id] = [];
+      stockDetailsByItem[sl.item_id].push({
+        id: sl.id,
+        warehouseName: sl.inv_s_warehouse?.name || "—",
+        binLocation: sl.bin_location || "—",
+        quantity: Number(sl.quantity) || 0,
+        uomName: sl.inv_s_unit?.name || "",
+        uomAbbreviation: sl.inv_s_unit?.abbreviation || "",
+        poNo: sl.po_no || "—",
+        deliveryNo: sl.delivery_no || "—",
+        supplierName: sl.inv_s_supplier?.name || "—",
+        remarks: sl.remarks || "—",
+        createdAt: sl.created_at || null,
+      });
+    }
+  }
+
+  // 3. Get allocated quantities
+  const { data: allocations } = await supabase
+    .from("inv_t_allocation")
+    .select("item_id, quantity");
+
+  const allocatedByItem = {};
+  if (allocations) {
+    for (const a of allocations) {
+      allocatedByItem[a.item_id] = (allocatedByItem[a.item_id] || 0) + (Number(a.quantity) || 0);
+    }
+  }
+
+  // 4. Get released quantities (negative stock levels from BOM releases)
+  const releasedByItem = {};
+  if (stockLevels) {
+    for (const sl of stockLevels) {
+      if (sl.quantity < 0) {
+        releasedByItem[sl.item_id] = (releasedByItem[sl.item_id] || 0) + Math.abs(Number(sl.quantity) || 0);
+      }
+    }
+  }
+
+  return materialItems.map((item) => {
+    const totalStock = totalStockByItem[item.item_id] || 0;
+    const allocated = allocatedByItem[item.item_id] || 0;
+    const released = releasedByItem[item.item_id] || 0;
+    const available = totalStock - allocated - released;
+
+    return {
+      id: item.item_id,
+      name: item.name || "",
+      sku: item.sku || "",
+      description: item.description || "",
+      categoryId: item.category_id,
+      unitId: item.unit_id,
+      cost: item.cost || 0,
+      totalStock,
+      allocated,
+      released,
+      available,
+      minThreshold: item.min_threshold || 0,
+      maxThreshold: item.max_threshold || 0,
+      warehouseId: item.warehouse_id,
+      isActive: item.is_active,
+      stockDetails: stockDetailsByItem[item.item_id] || [],
+    };
+  });
+}
+
+//#endregion
+
+//#region ─── ALLOCATED QUANTITIES ───────────────────────────────────
+
+export async function loadAllocatedQuantitiesAction() {
+  const supabase = getSupabaseAdmin();
+
+  const { data, error } = await supabase
+    .from("inv_t_allocation")
+    .select("item_id, quantity");
+
+  if (error) {
+    console.error("[loadAllocatedQuantitiesAction]", error);
+    return {};
+  }
+
+  const allocatedByItem = {};
+  if (data) {
+    for (const a of data) {
+      allocatedByItem[a.item_id] = (allocatedByItem[a.item_id] || 0) + (Number(a.quantity) || 0);
+    }
+  }
+
+  return allocatedByItem;
 }
 
 //#endregion

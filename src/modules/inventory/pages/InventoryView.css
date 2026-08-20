@@ -714,3 +714,34 @@
     grid-template-columns: 1fr 1fr;
   }
 }
+
+/* ─── RECEIVING SPLIT LAYOUT ───────────────────────────────── */
+
+.receiving-split-layout {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-start;
+}
+
+.receiving-left-panel {
+  flex: 0 0 320px;
+  min-width: 280px;
+  max-width: 380px;
+}
+
+.receiving-right-panel {
+  flex: 1;
+  min-width: 0;
+}
+
+@media (max-width: 768px) {
+  .receiving-split-layout {
+    flex-direction: column;
+  }
+
+  .receiving-left-panel {
+    flex: 1 1 auto;
+    max-width: none;
+    width: 100%;
+  }
+}

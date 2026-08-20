@@ -12,7 +12,7 @@ import {
   Button, Card, Input, Modal, Badge, toastError, toastSuccess,
 } from "@/shared/components/ui";
 import TableZ from "@/shared/components/ui/table/TableZ";
-import { createPurchaseRequestAction, updatePurchaseRequestAction } from "../data/inventory.actions";
+import { createPurchaseRequestAction, updatePurchaseRequestAction, createPurchaseOrderAction, updatePurchaseOrderAction } from "../data/inventory.actions";
 import "./InventoryView.css";
 import "./SharedTransactionForm.css";
 
@@ -38,6 +38,22 @@ function generatePONo() {
 function displayValue(value) {
   if (value === null || value === undefined || value === "") return "—";
   return value;
+}
+
+const DEFAULT_PR_EMPTY_ROWS = 5;
+
+function createEmptyPrLineItem(index) {
+  return {
+    id: `pr-empty-${Date.now()}-${index}`,
+    itemId: "",
+    quantity: "",
+    unitId: "",
+    estUnitCost: "",
+  };
+}
+
+function createDefaultPrLineItems(count = DEFAULT_PR_EMPTY_ROWS) {
+  return Array.from({ length: count }, (_, i) => createEmptyPrLineItem(i));
 }
 
 function PriorityBadge({ priority }) {
@@ -82,7 +98,7 @@ function StatusBadge({ name }) {
 // ---------------------------------------------------------------------------
 // Main View
 // ---------------------------------------------------------------------------
-export default function ProcurementView({ initialData, hideSidebar = false, onNavigate, defaultView = "dashboard", editingPr = null, initialPrId = null }) {
+export default function ProcurementView({ initialData, hideSidebar = false, onNavigate, defaultView = "dashboard", editingPr = null, initialPrId = null, editingPo = null, viewingPr = null, viewingPo = null }) {
   const router = useRouter();
   const data = initialData;
   const [isBusy, setIsBusy] = useState(false);
@@ -92,6 +108,9 @@ export default function ProcurementView({ initialData, hideSidebar = false, onNa
   const [showPrSubmitConfirm, setShowPrSubmitConfirm] = useState(false);
 
   const isEditing = Boolean(editingPr);
+  const isEditingPo = Boolean(editingPo);
+  const isViewingPr = Boolean(viewingPr);
+  const isViewingPo = Boolean(viewingPo);
 
   const items = data?.items || [];
   const warehouses = data?.warehouses || [];
@@ -139,6 +158,7 @@ export default function ProcurementView({ initialData, hideSidebar = false, onNa
   const purchaseRequests = data?.purchaseRequests || [];
   const purchaseRequestItems = data?.purchaseRequestItems || [];
   const purchaseOrders = data?.purchaseOrders || [];
+  const purchaseOrderItems = data?.purchaseOrderItems || [];
 
   const userById = useMemo(() => {
     const map = {};
@@ -161,6 +181,16 @@ export default function ProcurementView({ initialData, hideSidebar = false, onNa
     });
     return map;
   }, [purchaseRequestItems]);
+
+  const poItemsByPoId = useMemo(() => {
+    const map = {};
+    (purchaseOrderItems || []).forEach((item) => {
+      const poId = String(item.po_id);
+      if (!map[poId]) map[poId] = [];
+      map[poId].push(item);
+    });
+    return map;
+  }, [purchaseOrderItems]);
 
   // Resolve inv_s_status rows so PR status_id → status name/color.
   const purchaseRequestStatuses = data?.purchaseRequestStatuses || [];
@@ -241,7 +271,7 @@ export default function ProcurementView({ initialData, hideSidebar = false, onNa
     priority: PR_PRIORITIES[1],
     remarks: "",
   }));
-  const [prLineItems, setPrLineItems] = useState([]);
+  const [prLineItems, setPrLineItems] = useState(() => createDefaultPrLineItems());
   const updatePrForm = useCallback((field, value) => setPrForm((prev) => ({ ...prev, [field]: value })), []);
 
   // When editing, pre-fill the form from the selected PR.
@@ -268,6 +298,30 @@ export default function ProcurementView({ initialData, hideSidebar = false, onNa
     );
   }, [editingPr]);
 
+  // When viewing, pre-fill the form from the selected PR (read-only).
+  useEffect(() => {
+    if (!viewingPr) return;
+    const p = viewingPr;
+    setPrForm({
+      refNo: p.pr_no || p.refNo || "",
+      date: (p.pr_date || "").slice(0, 10) || new Date().toISOString().slice(0, 10),
+      requestedBy: p.requestor_id != null ? String(p.requestor_id) : "",
+      department: p.dept_id != null ? String(p.dept_id) : "",
+      requiredDate: (p.date_required || "").slice(0, 10) || "",
+      priority: p.priority || PR_PRIORITIES[1],
+      remarks: p.remarks || "",
+    });
+    setPrLineItems(
+      (p.lineItems || []).map((li, idx) => ({
+        id: Date.now() + idx,
+        itemId: li.item_id != null ? String(li.item_id) : "",
+        quantity: li.quantity != null ? String(li.quantity) : "",
+        unitId: li.uom_id != null ? String(li.uom_id) : "",
+        estUnitCost: li.est_unit_cost != null ? String(li.est_unit_cost) : "",
+      }))
+    );
+  }, [viewingPr]);
+
   // ─── PO Form State ─────────────────────────────────────────
   const [poForm, setPoForm] = useState({
     refNo: generatePONo(),
@@ -282,6 +336,56 @@ export default function ProcurementView({ initialData, hideSidebar = false, onNa
   const [poLineItems, setPoLineItems] = useState([]);
   const updatePoForm = useCallback((field, value) => setPoForm((prev) => ({ ...prev, [field]: value })), []);
 
+  // When editing, pre-fill the PO form from the selected PO.
+  useEffect(() => {
+    if (!editingPo) return;
+    const p = editingPo;
+    setPoForm({
+      refNo: p.po_no || p.refNo || "",
+      date: (p.created_at || p.po_date || "").slice(0, 10) || new Date().toISOString().slice(0, 10),
+      supplierId: p.supplier_id != null ? String(p.supplier_id) : "",
+      prRef: p.pr_id != null ? String(p.pr_id) : "",
+      deliveryDate: (p.delivery_date || "").slice(0, 10) || "",
+      deliveryLocation: p.delivery_location != null ? String(p.delivery_location) : "",
+      paymentTerms: p.payment_terms || PO_PAYMENT_TERMS[1],
+      remarks: p.remarks || "",
+    });
+    setPoLineItems(
+      (p.lineItems || []).map((li, idx) => ({
+        id: Date.now() + idx,
+        itemId: li.item_id != null ? String(li.item_id) : "",
+        quantity: li.quantity != null ? String(li.quantity) : "",
+        unitId: li.uom_id != null ? String(li.uom_id) : "",
+        unitPrice: li.est_unit_cost != null ? String(li.est_unit_cost) : "",
+      }))
+    );
+  }, [editingPo]);
+
+  // When viewing, pre-fill the PO form from the selected PO (read-only).
+  useEffect(() => {
+    if (!viewingPo) return;
+    const p = viewingPo;
+    setPoForm({
+      refNo: p.po_no || p.refNo || "",
+      date: (p.created_at || p.po_date || "").slice(0, 10) || new Date().toISOString().slice(0, 10),
+      supplierId: p.supplier_id != null ? String(p.supplier_id) : "",
+      prRef: p.pr_id != null ? String(p.pr_id) : "",
+      deliveryDate: (p.delivery_date || "").slice(0, 10) || "",
+      deliveryLocation: p.delivery_location != null ? String(p.delivery_location) : "",
+      paymentTerms: p.payment_terms || PO_PAYMENT_TERMS[1],
+      remarks: p.remarks || "",
+    });
+    setPoLineItems(
+      (p.lineItems || []).map((li, idx) => ({
+        id: Date.now() + idx,
+        itemId: li.item_id != null ? String(li.item_id) : "",
+        quantity: li.quantity != null ? String(li.quantity) : "",
+        unitId: li.uom_id != null ? String(li.uom_id) : "",
+        unitPrice: li.est_unit_cost != null ? String(li.est_unit_cost) : "",
+      }))
+    );
+  }, [viewingPo]);
+
   const handlePoPrChange = useCallback((prId) => {
     const pr = purchaseRequests.find((p) => String(p.id) === String(prId));
     updatePoForm("prRef", prId);
@@ -295,6 +399,7 @@ export default function ProcurementView({ initialData, hideSidebar = false, onNa
         id: Date.now() + idx,
         itemId: li.item_id != null ? String(li.item_id) : "",
         quantity: li.quantity != null ? String(li.quantity) : "",
+        unitId: li.uom_id != null ? String(li.uom_id) : "",
         unitPrice: li.est_unit_cost != null ? String(li.est_unit_cost) : "",
       }))
     );
@@ -334,18 +439,67 @@ export default function ProcurementView({ initialData, hideSidebar = false, onNa
 
   // ─── PO Line Item Helpers ──────────────────────────────────
   const addPoLineItem = useCallback(() => {
-    setPoLineItems((prev) => [...prev, { id: Date.now(), itemId: "", quantity: "", unitPrice: "" }]);
+    setPoLineItems((prev) => [...prev, { id: Date.now(), itemId: "", quantity: "", unitId: "", unitPrice: "" }]);
   }, []);
   const updatePoLineItem = useCallback((id, field, value) => {
-    setPoLineItems((prev) => prev.map((li) => (li.id === id ? { ...li, [field]: value } : li)));
-  }, []);
+    setPoLineItems((prev) => prev.map((li) => {
+      if (li.id !== id) return li;
+      const updates = { [field]: value };
+      if (field === "itemId" && value && !li.unitId) {
+        updates.unitId = unitIdForItem(value);
+      }
+      return { ...li, ...updates };
+    }));
+  }, [unitIdForItem]);
   const removePoLineItem = useCallback((id) => {
     setPoLineItems((prev) => prev.filter((li) => li.id !== id));
   }, []);
 
+  // ─── PR Form Validation ────────────────────────────────────
+  const validatePrForm = useCallback(() => {
+    const errors = [];
+
+    if (!prForm.requestedBy) {
+      errors.push("Requested By is required.");
+    }
+    if (!prForm.department) {
+      errors.push("Department is required.");
+    }
+    if (!prForm.requiredDate) {
+      errors.push("Required Date is required.");
+    }
+    if (prLineItems.length === 0) {
+      errors.push("At least one requested item is required.");
+    } else {
+      prLineItems.forEach((li, idx) => {
+        const lineNo = idx + 1;
+        if (!li.itemId) {
+          errors.push(`Line item ${lineNo}: Please select an item.`);
+        }
+        if (!li.quantity || Number(li.quantity) <= 0) {
+          errors.push(`Line item ${lineNo}: Quantity must be greater than 0.`);
+        }
+        if (!li.unitId) {
+          errors.push(`Line item ${lineNo}: Please select a unit.`);
+        }
+        if (li.estUnitCost === "" || li.estUnitCost === null || li.estUnitCost === undefined || Number(li.estUnitCost) < 0) {
+          errors.push(`Line item ${lineNo}: Estimated unit cost is required and must be 0 or greater.`);
+        }
+      });
+    }
+
+    return errors;
+  }, [prForm, prLineItems]);
+
   // ─── Submit Handlers ───────────────────────────────────────
   const handlePrSubmit = useCallback(async (saveAsDraft = false) => {
-    if (!prForm.requestedBy) {
+    if (!saveAsDraft) {
+      const errors = validatePrForm();
+      if (errors.length > 0) {
+        showToast(errors[0], "error");
+        return;
+      }
+    } else if (!prForm.requestedBy) {
       showToast("Requested By is required.", "error");
       return;
     }
@@ -381,7 +535,7 @@ export default function ProcurementView({ initialData, hideSidebar = false, onNa
         priority: PR_PRIORITIES[1],
         remarks: "",
       });
-      setPrLineItems([]);
+      setPrLineItems(createDefaultPrLineItems());
       refresh();
       onNavigate ? onNavigate("purchaseRequests") : router.push("/inventory/purchase-requests");
     } catch (err) {
@@ -389,13 +543,91 @@ export default function ProcurementView({ initialData, hideSidebar = false, onNa
     } finally {
       setIsBusy(false);
     }
-  }, [prForm, prLineItems, refresh, showToast, isEditing, editingPr, onNavigate, router]);
+  }, [prForm, prLineItems, refresh, showToast, isEditing, editingPr, onNavigate, router, validatePrForm]);
 
+  const handlePrSubmitClick = useCallback(() => {
+    const errors = validatePrForm();
+    if (errors.length > 0) {
+      showToast(errors[0], "error");
+      return;
+    }
+    setShowPrSubmitConfirm(true);
+  }, [validatePrForm, showToast]);
 
+  const handlePoSubmit = useCallback(async (saveAsDraft = false) => {
+    // Validate the form the same way as the PR form.
+    const errors = [];
 
-  const handlePoSubmit = useCallback(() => {
-    showToast("Purchase Order saved (UI only — data binding coming soon).");
-  }, [showToast]);
+    if (!poForm.supplierId) {
+      errors.push("Supplier is required.");
+    }
+    if (!saveAsDraft) {
+      if (poLineItems.length === 0) {
+        errors.push("At least one order item is required.");
+      } else {
+        poLineItems.forEach((li, idx) => {
+          const lineNo = idx + 1;
+          if (!li.itemId) {
+            errors.push(`Line item ${lineNo}: Please select an item.`);
+          }
+          if (!li.quantity || Number(li.quantity) <= 0) {
+            errors.push(`Line item ${lineNo}: Quantity must be greater than 0.`);
+          }
+        });
+      }
+    }
+
+    if (errors.length > 0) {
+      showToast(errors[0], "error");
+      return;
+    }
+
+    setIsBusy(true);
+    try {
+      const estTotalCost = poLineItems.reduce(
+        (sum, li) => sum + (Number(li.quantity) || 0) * (Number(li.unitPrice) || 0),
+        0
+      );
+
+      const payload = {
+        poNo: poForm.refNo,
+        poDate: poForm.date,
+        supplierId: poForm.supplierId,
+        prId: poForm.prRef,
+        deliveryLocation: poForm.deliveryLocation,
+        remarks: poForm.remarks,
+        estTotalCost,
+        items: poLineItems,
+        isDraft: saveAsDraft,
+      };
+
+      if (isEditingPo && editingPo?.id != null) {
+        await updatePurchaseOrderAction(editingPo.id, payload);
+        showToast(saveAsDraft ? "Purchase Order updated and saved as draft." : "Purchase Order updated and submitted successfully.");
+      } else {
+        await createPurchaseOrderAction(payload);
+        showToast(saveAsDraft ? "Purchase Order saved as draft." : "Purchase Order submitted successfully.");
+      }
+
+      setPoForm({
+        refNo: generatePONo(),
+        date: new Date().toISOString().slice(0, 10),
+        supplierId: "",
+        prRef: "",
+        deliveryDate: "",
+        deliveryLocation: "",
+        paymentTerms: PO_PAYMENT_TERMS[1],
+        remarks: "",
+      });
+      setPoLineItems([]);
+      refresh();
+      onNavigate ? onNavigate("purchaseOrders") : router.push("/inventory/purchase-orders");
+    } catch (err) {
+      showToast(err?.message || "Failed to save purchase order.", "error");
+    } finally {
+      setIsBusy(false);
+    }
+  }, [poForm, poLineItems, refresh, showToast, onNavigate, router, isEditingPo, editingPo]);
 
   // ─── PR Line Item Columns ──────────────────────────────────
   const prLineItemColumns = useMemo(() => [
@@ -466,9 +698,9 @@ export default function ProcurementView({ initialData, hideSidebar = false, onNa
             <div>
               <h1 className="tx-form-title">
                 <ClipboardList size={22} style={{ color: "var(--psb-blue, #3b82f6)" }} />
-                {isEditing ? "Edit Purchase Request" : "New Purchase Request"}
+                {isViewingPr ? "View Purchase Request" : isEditing ? "Edit Purchase Request" : "New Purchase Request"}
               </h1>
-              <p className="tx-form-subtitle">{isEditing ? "Update the purchase request details and line items." : "Create a purchase request for materials and supplies."}</p>
+              <p className="tx-form-subtitle">{isViewingPr ? "Review the purchase request details." : isEditing ? "Update the purchase request details and line items." : "Create a purchase request for materials and supplies."}</p>
             </div>
             <Button variant="ghost" size="sm" onClick={() => onNavigate ? onNavigate("purchaseRequests") : router.push("/inventory/purchase-requests")}>
               <ArrowLeft size={14} /> Back to Purchase Requests
@@ -481,24 +713,24 @@ export default function ProcurementView({ initialData, hideSidebar = false, onNa
                   <div className="tx-form-field-row">
                     <div className="tx-form-field">
                       <label className="tx-form-label">PR Reference #</label>
-                      <Input value={prForm.refNo} onChange={(e) => updatePrForm("refNo", e.target.value)} placeholder="Auto-generated" />
+                      <Input value={prForm.refNo} onChange={(e) => updatePrForm("refNo", e.target.value)} placeholder="Auto-generated" disabled={isViewingPr} />
                     </div>
                     <div className="tx-form-field">
                       <label className="tx-form-label">Date</label>
-                      <input type="date" className="form-control" value={prForm.date} onChange={(e) => updatePrForm("date", e.target.value)} />
+                      <input type="date" className="form-control" value={prForm.date} onChange={(e) => updatePrForm("date", e.target.value)} disabled={isViewingPr} />
                     </div>
                   </div>
                   <div className="tx-form-field-row">
                     <div className="tx-form-field">
                       <label className="tx-form-label">Requested By *</label>
-                      <select className="form-select" value={prForm.requestedBy} onChange={(e) => updatePrForm("requestedBy", e.target.value)}>
+                      <select className="form-select" value={prForm.requestedBy} onChange={(e) => updatePrForm("requestedBy", e.target.value)} disabled={isViewingPr}>
                         <option value="">Select user</option>
                         {users.map((u) => (<option key={u.id} value={String(u.id)}>{u.first_name} {u.last_name}{u.email ? ` (${u.email})` : ""}</option>))}
                       </select>
                     </div>
                     <div className="tx-form-field">
-                      <label className="tx-form-label">Department</label>
-                      <select className="form-select" value={prForm.department} onChange={(e) => updatePrForm("department", e.target.value)}>
+                      <label className="tx-form-label">Department *</label>
+                      <select className="form-select" value={prForm.department} onChange={(e) => updatePrForm("department", e.target.value)} disabled={isViewingPr}>
                         <option value="">Select department</option>
                         {departments.map((d) => (<option key={d.id} value={String(d.id)}>{d.dept_name}</option>))}
                       </select>
@@ -506,12 +738,12 @@ export default function ProcurementView({ initialData, hideSidebar = false, onNa
                   </div>
                   <div className="tx-form-field-row">
                     <div className="tx-form-field">
-                      <label className="tx-form-label">Required Date</label>
-                      <input type="date" className="form-control" value={prForm.requiredDate} onChange={(e) => updatePrForm("requiredDate", e.target.value)} />
+                      <label className="tx-form-label">Required Date *</label>
+                      <input type="date" className="form-control" value={prForm.requiredDate} onChange={(e) => updatePrForm("requiredDate", e.target.value)} disabled={isViewingPr} />
                     </div>
                     <div className="tx-form-field">
                       <label className="tx-form-label">Priority</label>
-                      <select className="form-select" value={prForm.priority} onChange={(e) => updatePrForm("priority", e.target.value)}>
+                      <select className="form-select" value={prForm.priority} onChange={(e) => updatePrForm("priority", e.target.value)} disabled={isViewingPr}>
                         {PR_PRIORITIES.map((p) => (<option key={p} value={p}>{p}</option>))}
                       </select>
                     </div>
@@ -519,23 +751,25 @@ export default function ProcurementView({ initialData, hideSidebar = false, onNa
                   <div className="tx-form-field-row">
                     <div className="tx-form-field" style={{ gridColumn: "1 / -1" }}>
                       <label className="tx-form-label">Remarks</label>
-                      <Input value={prForm.remarks} onChange={(e) => updatePrForm("remarks", e.target.value)} placeholder="Justification, special instructions, etc." />
+                      <Input value={prForm.remarks} onChange={(e) => updatePrForm("remarks", e.target.value)} placeholder="Justification, special instructions, etc." disabled={isViewingPr} />
                     </div>
                   </div>
                 </div>
                 <div className="tx-form-section">
                   <div className="tx-form-section-header">
-                    <h3>Requested Items</h3>
-                    <Button variant="success" size="sm" onClick={addPrLineItem} disabled={isBusy}><Plus size={14} /> Add Item</Button>
+                    <h3>Requested Items *</h3>
+                    {!isViewingPr && <Button variant="success" size="sm" onClick={addPrLineItem} disabled={isBusy}><Plus size={14} /> Add Item</Button>}
                   </div>
                   {prLineItems.length > 0 && <TableZ data={prLineItems} columns={prLineItemColumns} rowIdKey="id" hideSearch hideFooter emptyMessage="" />}
                   {prLineItems.length === 0 && <p className="tx-form-empty">No items added yet. Click "Add Item" to start.</p>}
                 </div>
-                <div className="tx-form-actions">
-                  <Button variant="ghost" size="sm" onClick={() => { setPrLineItems([]); updatePrForm("remarks", ""); }} disabled={isBusy}><X size={14} /> Clear Form</Button>
-                  <Button variant="secondary" size="md" onClick={() => handlePrSubmit(true)} loading={isBusy} disabled={isBusy}><Save size={14} /> {isEditing ? "Update as Draft" : "Save as Draft"}</Button>
-                  <Button variant="danger" size="md" onClick={() => setShowPrSubmitConfirm(true)} loading={isBusy} disabled={isBusy}><Save size={14} /> {isEditing ? "Update Purchase Request" : "Submit Purchase Request"}</Button>
-                </div>
+                {!isViewingPr && (
+                  <div className="tx-form-actions">
+                    <Button variant="ghost" size="sm" onClick={() => { setPrLineItems(createDefaultPrLineItems()); updatePrForm("remarks", ""); }} disabled={isBusy}><X size={14} /> Clear Form</Button>
+                    <Button variant="secondary" size="md" onClick={() => handlePrSubmit(true)} loading={isBusy} disabled={isBusy}><Save size={14} /> {isEditing ? "Update as Draft" : "Save as Draft"}</Button>
+                    <Button variant="danger" size="md" onClick={handlePrSubmitClick} loading={isBusy} disabled={isBusy}><Save size={14} /> {isEditing ? "Update Purchase Request" : "Submit Purchase Request"}</Button>
+                  </div>
+                )}
               </Card>
             </div>
           </div>
@@ -593,9 +827,9 @@ export default function ProcurementView({ initialData, hideSidebar = false, onNa
             <div> 
               <h1 className="tx-form-title">
                 <FileText size={22} style={{ color: "var(--psb-blue, #3b82f6)" }} />
-                New Purchase Order
+                {isViewingPo ? "View Purchase Order" : isEditingPo ? "Edit Purchase Order" : "New Purchase Order"}
               </h1>
-              <p className="tx-form-subtitle">Create a purchase order from an approved request.</p>
+              <p className="tx-form-subtitle">{isViewingPo ? "Review the purchase order details." : isEditingPo ? "Update the purchase order details and line items." : "Create a purchase order from an approved request."}</p>
             </div>
             <Button variant="ghost" size="sm" onClick={() => onNavigate ? onNavigate("purchaseOrders") : router.push("/inventory/purchase-orders")}>
               <ArrowLeft size={14} /> Back to Purchase Orders
@@ -608,24 +842,24 @@ export default function ProcurementView({ initialData, hideSidebar = false, onNa
                   <div className="tx-form-field-row">
                     <div className="tx-form-field">
                       <label className="tx-form-label">PO Reference #</label>
-                      <Input value={poForm.refNo} onChange={(e) => updatePoForm("refNo", e.target.value)} placeholder="Auto-generated" />
+                      <Input value={poForm.refNo} onChange={(e) => updatePoForm("refNo", e.target.value)} placeholder="Auto-generated" disabled={isViewingPo} />
                     </div>
                     <div className="tx-form-field">
                       <label className="tx-form-label">Date</label>
-                      <input type="date" className="form-control" value={poForm.date} onChange={(e) => updatePoForm("date", e.target.value)} />
+                      <input type="date" className="form-control" value={poForm.date} onChange={(e) => updatePoForm("date", e.target.value)} disabled={isViewingPo} />
                     </div>
                   </div>
                   <div className="tx-form-field-row">
                     <div className="tx-form-field">
                       <label className="tx-form-label">Supplier *</label>
-                      <select className="form-select" value={poForm.supplierId} onChange={(e) => updatePoForm("supplierId", e.target.value)}>
+                      <select className="form-select" value={poForm.supplierId} onChange={(e) => updatePoForm("supplierId", e.target.value)} disabled={isViewingPo}>
                         <option value="">Select supplier</option>
                         {suppliers.map((s) => (<option key={s.id} value={String(s.id)}>{s.name}</option>))}
                       </select>
                     </div>
                     <div className="tx-form-field">
                       <label className="tx-form-label">PR Reference</label>
-                      <select className="form-select" value={poForm.prRef} onChange={(e) => handlePoPrChange(e.target.value)}>
+                      <select className="form-select" value={poForm.prRef} onChange={(e) => handlePoPrChange(e.target.value)} disabled={isViewingPo}>
                         <option value="">Select approved PR</option>
                         {approvedPrsWithoutPo.map((pr) => {
                           const requester = userById[String(pr.requestor_id)];
@@ -640,11 +874,11 @@ export default function ProcurementView({ initialData, hideSidebar = false, onNa
                   <div className="tx-form-field-row">
                     <div className="tx-form-field">
                       <label className="tx-form-label">Delivery Date</label>
-                      <input type="date" className="form-control" value={poForm.deliveryDate} onChange={(e) => updatePoForm("deliveryDate", e.target.value)} />
+                      <input type="date" className="form-control" value={poForm.deliveryDate} onChange={(e) => updatePoForm("deliveryDate", e.target.value)} disabled={isViewingPo} />
                     </div>
                     <div className="tx-form-field">
                       <label className="tx-form-label">Delivery Location</label>
-                      <select className="form-select" value={poForm.deliveryLocation} onChange={(e) => updatePoForm("deliveryLocation", e.target.value)}>
+                      <select className="form-select" value={poForm.deliveryLocation} onChange={(e) => updatePoForm("deliveryLocation", e.target.value)} disabled={isViewingPo}>
                         <option value="">Select delivery location</option>
                         {warehouses.map((w) => (<option key={w.id} value={String(w.id)}>{w.name}</option>))}
                       </select>
@@ -653,7 +887,7 @@ export default function ProcurementView({ initialData, hideSidebar = false, onNa
                   <div className="tx-form-field-row">
                     <div className="tx-form-field">
                       <label className="tx-form-label">Payment Terms</label>
-                      <select className="form-select" value={poForm.paymentTerms} onChange={(e) => updatePoForm("paymentTerms", e.target.value)}>
+                      <select className="form-select" value={poForm.paymentTerms} onChange={(e) => updatePoForm("paymentTerms", e.target.value)} disabled={isViewingPo}>
                         {PO_PAYMENT_TERMS.map((t) => (<option key={t} value={t}>{t}</option>))}
                       </select>
                     </div>
@@ -662,7 +896,7 @@ export default function ProcurementView({ initialData, hideSidebar = false, onNa
                 <div className="tx-form-section">
                   <div className="tx-form-section-header">
                     <h3>Order Items</h3>
-                    <Button variant="success" size="sm" onClick={addPoLineItem} disabled={isBusy}><Plus size={14} /> Add Item</Button>
+                    {!isViewingPo && <Button variant="success" size="sm" onClick={addPoLineItem} disabled={isBusy}><Plus size={14} /> Add Item</Button>}
                   </div>
                   {poLineItems.length > 0 && <TableZ data={poLineItems} columns={poLineItemColumns} rowIdKey="id" hideSearch hideFooter emptyMessage="" />}
                   {poLineItems.length === 0 && <p className="tx-form-empty">No items added yet. Click "Add Item" to start.</p>}
@@ -670,13 +904,16 @@ export default function ProcurementView({ initialData, hideSidebar = false, onNa
                 <div className="tx-form-section">
                   <div className="tx-form-field">
                     <label className="tx-form-label">Remarks</label>
-                    <Input value={poForm.remarks} onChange={(e) => updatePoForm("remarks", e.target.value)} placeholder="Delivery instructions, special terms, etc." />
+                    <Input value={poForm.remarks} onChange={(e) => updatePoForm("remarks", e.target.value)} placeholder="Delivery instructions, special terms, etc." disabled={isViewingPo} />
                   </div>
                 </div>
-                <div className="tx-form-actions">
-                  <Button variant="ghost" size="sm" onClick={() => { setPoLineItems([]); updatePoForm("remarks", ""); }} disabled={isBusy}><X size={14} /> Clear Form</Button>
-                  <Button variant="danger" size="md" onClick={handlePoSubmit} loading={isBusy}><Save size={14} /> Submit Purchase Order</Button>
-                </div>
+                {!isViewingPo && (
+                  <div className="tx-form-actions">
+                    <Button variant="ghost" size="sm" onClick={() => { setPoLineItems([]); updatePoForm("remarks", ""); }} disabled={isBusy}><X size={14} /> Clear Form</Button>
+                    <Button variant="secondary" size="md" onClick={() => handlePoSubmit(true)} loading={isBusy} disabled={isBusy}><Save size={14} /> {isEditingPo ? "Update as Draft" : "Save as Draft"}</Button>
+                    <Button variant="danger" size="md" onClick={() => handlePoSubmit(false)} loading={isBusy} disabled={isBusy}><Save size={14} /> {isEditingPo ? "Update Purchase Order" : "Submit Purchase Order"}</Button>
+                  </div>
+                )}
               </Card>
             </div>
           </div>
@@ -877,6 +1114,7 @@ export default function ProcurementView({ initialData, hideSidebar = false, onNa
                   {activePurchaseOrders.map((po) => {
                     const poId = String(po.id ?? po.po_id);
                     const isExpanded = expandedPoIds.has(poId);
+                    const poItems = poItemsByPoId[poId] || [];
                     return (
                       <React.Fragment key={poId}>
                         <tr onClick={() => togglePoExpand(poId)} className="proc-table-row--clickable">
@@ -893,8 +1131,34 @@ export default function ProcurementView({ initialData, hideSidebar = false, onNa
                           <tr className="proc-detail-row">
                             <td colSpan={6}>
                               <div className="proc-detail-panel">
-                                <h4 className="proc-detail-title">Remarks</h4>
-                                <p className="mb-0">{po.remarks || "No remarks."}</p>
+                                <h4 className="proc-detail-title">Order Items</h4>
+                                <table className="proc-detail-table">
+                                  <thead>
+                                    <tr>
+                                      <th>Item</th>
+                                      <th>SKU</th>
+                                      <th>Qty</th>
+                                      <th>Unit</th>
+                                      <th>Est. Unit Cost</th>
+                                      <th>Est. Total Cost</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {poItems.map((item) => (
+                                      <tr key={item.id}>
+                                        <td>{item.itemName}</td>
+                                        <td>{displayValue(item.itemSku)}</td>
+                                        <td>{item.quantity}</td>
+                                        <td>{unitLookup[String(item.uom_id)] || displayValue(item.uom_id)}</td>
+                                        <td className="inventory-mono">${Number(item.est_unit_cost || 0).toFixed(2)}</td>
+                                        <td className="inventory-mono fw-semibold">${Number(item.est_total_cost || 0).toFixed(2)}</td>
+                                      </tr>
+                                    ))}
+                                    {poItems.length === 0 && (
+                                      <tr><td colSpan={6} className="text-muted text-center py-2">No items for this order.</td></tr>
+                                    )}
+                                  </tbody>
+                                </table>
                               </div>
                             </td>
                           </tr>

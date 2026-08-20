@@ -211,17 +211,124 @@
   gap: 0.5rem;
 }
 
+/* ─── CUSTOMER SEARCH ──────────────────────────────────────── */
+
+.bom-customer-search-wrap {
+  position: relative;
+  width: 100%;
+  margin-bottom: 0.85rem;
+}
+
+.bom-customer-search-icon {
+  position: absolute;
+  left: 0.65rem;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--psb-muted);
+  pointer-events: none;
+}
+
+.bom-customer-search-input {
+  padding-left: 2.1rem !important;
+}
+
+.bom-customer-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 50;
+  background: var(--psb-bg, #fff);
+  border: 1px solid var(--psb-border, #dee2e6);
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  margin-top: 4px;
+  max-height: 220px;
+  overflow-y: auto;
+  list-style: none;
+  padding: 0;
+  margin-bottom: 0;
+}
+
+.bom-customer-dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.6rem 0.85rem;
+  cursor: pointer;
+  border-bottom: 1px solid var(--psb-border-light, #eef0f2);
+  font-size: 0.84rem;
+  transition: background 0.12s;
+}
+
+.bom-customer-dropdown-item:last-child {
+  border-bottom: none;
+}
+
+.bom-customer-dropdown-item:hover {
+  background: var(--psb-brand-light, rgba(24, 40, 72, 0.08));
+}
+
+.bom-customer-dd-name {
+  flex: 1;
+  color: var(--psb-text);
+  font-weight: 500;
+}
+
+.bom-customer-dd-addr {
+  font-family: var(--psb-mono, "SF Mono", "Consolas", monospace);
+  font-size: 0.72rem;
+  color: var(--psb-muted);
+  background: var(--psb-bg-hover, rgba(0, 0, 0, 0.04));
+  padding: 0.15rem 0.5rem;
+  border-radius: 3px;
+  white-space: nowrap;
+}
+
+.bom-customer-loading {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 50;
+  background: var(--psb-bg, #fff);
+  border: 1px solid var(--psb-border, #dee2e6);
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  margin-top: 4px;
+  padding: 0.6rem 0.85rem;
+  font-size: 0.82rem;
+  color: var(--psb-muted);
+}
+
+.bom-customer-empty {
+  font-size: 0.82rem;
+  color: var(--psb-muted);
+  font-style: italic;
+  padding: 0.5rem 0;
+}
+
+/* ─── ACTIVE PROJECT DETAILS ───────────────────────────────── */
+
+.bom-detail-panels {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.bom-project-detail-card,
+.bom-project-info-card {
+  margin-bottom: 0;
+}
+
 /* ─── STAT ROW ─────────────────────────────────────────────── */
 
 .bom-stat-row {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, 1fr);
   gap: 0.75rem;
   margin-bottom: 1.25rem;
-}
-
-.bom-stat-row > *:last-child {
-  grid-column: 1 / -1;
 }
 
 .bom-stat-card {
@@ -416,6 +523,84 @@
   width: 100%;
 }
 
+/* ─── BATCH EDIT ROW HIGHLIGHTING ──────────────────────────── */
+
+.bom-row-new {
+  border-left: 3px solid var(--psb-status-active, #28a745);
+  background: rgba(40, 167, 69, 0.04);
+}
+
+.bom-row-modified {
+  border-left: 3px solid var(--psb-gold, #f0ad4e);
+  background: rgba(240, 173, 78, 0.04);
+}
+
+.bom-row-pending-remove {
+  border-left: 3px solid var(--psb-status-suspended, #dc3545);
+  background: rgba(220, 53, 69, 0.06);
+  opacity: 0.6;
+}
+
+.bom-row-pending-remove td {
+  text-decoration: line-through;
+  color: var(--psb-muted);
+}
+
+.bom-cell-changed {
+  background: rgba(240, 173, 78, 0.12) !important;
+  border-radius: 3px;
+}
+
+/* ─── BATCH ACTION BAR ─────────────────────────────────────── */
+
+.bom-batch-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.65rem 0.85rem;
+  border-top: 1px solid var(--psb-border, #dee2e6);
+  background: var(--psb-bg-hover, rgba(0, 0, 0, 0.02));
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.bom-change-summary {
+  font-size: 0.8rem;
+  color: var(--psb-muted);
+  font-weight: 500;
+}
+
+.bom-change-summary.is-dirty {
+  color: var(--psb-gold, #f0ad4e);
+  font-weight: 600;
+}
+
+.bom-batch-buttons {
+  display: flex;
+  gap: 0.5rem;
+}
+
+/* ─── UNDO BUTTON ──────────────────────────────────────────── */
+
+.bom-undo-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: transparent;
+  color: var(--psb-status-active, #28a745);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.bom-undo-btn:hover {
+  background: var(--psb-status-active, #28a745);
+  color: #fff;
+}
+
 /* ─── ALLOCATE STOCK SECTION ───────────────────────────────── */
 
 .bom-allocate-section {
@@ -453,6 +638,12 @@
 */
 
 /* ─── RESPONSIVE ───────────────────────────────────────────── */
+
+@media (max-width: 640px) {
+  .bom-stat-row {
+    grid-template-columns: 1fr;
+  }
+}
 
 @media (min-width: 640px) {
   .bom-page-header {

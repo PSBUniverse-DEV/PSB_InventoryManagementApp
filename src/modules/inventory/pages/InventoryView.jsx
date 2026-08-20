@@ -40,6 +40,8 @@ import {
   createSupplierAction,
   updateSupplierAction,
   deleteSupplierAction,
+  recallPurchaseRequestAction,
+  recallPurchaseOrderAction,
 } from "../data/inventory.actions";
 import { useRouter } from "next/navigation";
 import MaterialFormModal from "./MaterialFormModal";
@@ -49,6 +51,11 @@ import ProcurementView from "./ProcurementView";
 import PurchaseRequestListView from "./PurchaseRequestListView";
 import PurchaseOrderListView from "./PurchaseOrderListView";
 import BomView from "./BomView";
+import ProjectBomView from "./ProjectBomView";
+import ProjectBomDetailView from "./ProjectBomDetailView";
+import POReceivingView from "./POReceivingView";
+import BOMReleaseView from "./BOMReleaseView";
+import AllMaterialsView from "./AllMaterialsView";
 
 // ─── SUB-COMPONENTS ─────────────────────────────────────────
 
@@ -80,8 +87,13 @@ export default function InventoryView({ initialData }) {
   const [view, setView] = useState("dashboard");
   const [procurementDefaultView, setProcurementDefaultView] = useState("dashboard");
   const [editingPr, setEditingPr] = useState(null);
+  const [editingPo, setEditingPo] = useState(null);
+  const [viewingPr, setViewingPr] = useState(null);
+  const [viewingPo, setViewingPo] = useState(null);
   const [poInitialPrId, setPoInitialPrId] = useState(null);
+  const [projectBomDetail, setProjectBomDetail] = useState(null); // { bomId, mode }
   const [search, setSearch] = useState("");
+  const [lowStockSearch, setLowStockSearch] = useState("");
   const [filterWh, setFilterWh] = useState("all");
   const [modal, setModal] = useState(null);
   const [isBusy, setIsBusy] = useState(false);
@@ -151,7 +163,7 @@ export default function InventoryView({ initialData }) {
   );
   //#endregion
 
-//#region ─── Mutation helpers ────────────────────────────────────
+ //#region ─── Mutation helpers ────────────────────────────────────
   const runMutation = useCallback(async (fn, txEntry) => {
     if (isBusy) return;
         setIsBusy(true);
@@ -196,9 +208,21 @@ export default function InventoryView({ initialData }) {
   );
 
   const filteredLowStock = useMemo(
-    () => filteredItems.filter((i) => (i.quantity || 0) <= (i.min_threshold || 0)),
+    () => filteredItems.filter((i) =>
+      (i.quantity || 0) <= (i.min_threshold || 0) &&
+      String(i.classification || "").toLowerCase() !== "equipment"
+    ),
     [filteredItems],
   );
+
+  const searchedLowStock = useMemo(() => {
+    const q = (lowStockSearch || "").trim().toLowerCase();
+    if (!q) return filteredLowStock;
+    return filteredLowStock.filter((item) =>
+      (item.name || "").toLowerCase().includes(q) ||
+      whName(item.warehouse_id).toLowerCase().includes(q)
+    );
+  }, [filteredLowStock, lowStockSearch, whName]);
 
   const filteredCheckedOut = useMemo(
     () => filteredItems.filter((i) => statusLookup[String(i.status_id)] === "In Use").length,
@@ -280,6 +304,10 @@ export default function InventoryView({ initialData }) {
       setView("bom");
       return;
     }
+    if (viewId === "projectBom") {
+      setView("projectBom");
+      return;
+    }
     if (viewId === "stockIn") {
       setView("stockIn");
       return;
@@ -291,6 +319,22 @@ export default function InventoryView({ initialData }) {
     if (viewId === "procurement") {
       setView("procurement");
       setProcurementDefaultView("dashboard");
+      return;
+    }
+    if (viewId === "poReceiving") {
+      setView("poReceiving");
+      return;
+    }
+    if (viewId === "bomRelease") {
+      setView("bomRelease");
+      return;
+    }
+    if (viewId === "allMaterials") {
+      setView("allMaterials");
+      return;
+    }
+    if (viewId === "purchaseRequests") {
+      router.push("/inventory/purchase-requests/approvals");
       return;
     }
     setView(viewId);
@@ -728,16 +772,63 @@ export default function InventoryView({ initialData }) {
             </div>
             <div className="inventory-dashboard-panels">
               <Card className="inventory-panel" title={<><AlertTriangle size={15} /> Low stock alerts</>}>
-                {filteredLowStock.length === 0 && <p className="inventory-panel-empty">All materials are above their reorder threshold.</p>}
-                {filteredLowStock.map((item) => (
-                  <div key={item.id} className="inventory-panel-row">
-                    <div>
-                      <div className="fw-semibold">{item.name}</div>
-                      <div className="inventory-panel-row-meta">{whName(item.warehouse_id)}</div>
-                    </div>
-                    <div className="inventory-panel-row-value">{item.quantity}/{item.min_threshold} {getUnitName(data?.config, item.unit)}</div>
+                <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.5rem" }}>
+                  <div style={{ position: "relative", flex: 1 }}>
+                    <Search size={14} style={{ position: "absolute", left: "0.5rem", top: "50%", transform: "translateY(-50%)", color: "var(--psb-muted)", pointerEvents: "none" }} />
+                    <input
+                      type="text"
+                      className="form-control form-control-sm"
+                      placeholder="Search low stock items..."
+                      value={lowStockSearch}
+                      onChange={(e) => setLowStockSearch(e.target.value)}
+                      style={{ paddingLeft: "2rem" }}
+                    />
                   </div>
-                ))}
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={() => {
+                      const lineItems = filteredLowStock.map((item) => ({
+                        item_id: item.id || item.item_id,
+                        itemName: item.name,
+                        itemSku: item.sku,
+                        quantity: Math.max(0, (item.min_threshold || 0) - (item.quantity || 0)),
+                        uom_id: item.unit_id || null,
+                        est_unit_cost: item.cost || 0,
+                      }));
+                      setEditingPr({ lineItems });
+                      setProcurementDefaultView("pr");
+                      setView("procurement");
+                    }}
+                    disabled={filteredLowStock.length === 0}
+                    style={{ flexShrink: 0 }}
+                  >
+                    <FileText size={14} /> Create PR
+                  </Button>
+                </div>
+                <TableZ
+                  data={searchedLowStock}
+                  hideSearch
+                  columns={[
+                    { key: "name", label: "Item", sortable: true, render: (row) => (
+                      <span style={{ minWidth: "200px", display: "inline-block" }}>{row.name}</span>
+                    )},
+                    { key: "warehouse", label: "Warehouse", sortable: true, render: (row) => whName(row.warehouse_id) },
+                    { key: "quantity", label: "Qty", sortable: true, align: "center" },
+                    { key: "min_threshold", label: "Min", sortable: true, align: "center" },
+                    { key: "status", label: "Status", align: "center", render: (row) => {
+                      const ratio = (row.quantity || 0) / Math.max(1, row.min_threshold || 1);
+                      if (ratio === 0) return <Badge variant="danger">Out</Badge>;
+                      if (ratio < 0.5) return <Badge variant="pending">Critical</Badge>;
+                      return <Badge variant="pending">Low</Badge>;
+                    }},
+                  ]}
+                  rowIdKey="id"
+                  searchPlaceholder="Search low stock items..."
+                  pageSizeOptions={[10]}
+                  defaultPageSize={10}
+                  emptyMessage="All materials are above their reorder threshold."
+                />
               </Card>
               <Card className="inventory-panel" title="Recent activity">
                 {(filteredTransactions || []).slice(0, 6).map((tx) => (
@@ -920,7 +1011,7 @@ export default function InventoryView({ initialData }) {
         )}
 
         {view === "procurement" && (
-          <ProcurementView initialData={data} hideSidebar onNavigate={setView} defaultView={procurementDefaultView} editingPr={editingPr} initialPrId={poInitialPrId} />
+          <ProcurementView initialData={data} hideSidebar onNavigate={setView} defaultView={procurementDefaultView} editingPr={editingPr} initialPrId={poInitialPrId} editingPo={editingPo} viewingPr={viewingPr} viewingPo={viewingPo} />
         )}
 
         {view === "purchaseRequests" && (
@@ -934,6 +1025,21 @@ export default function InventoryView({ initialData }) {
             }}
             onEditPurchaseRequest={(pr, lineItems) => {
               setEditingPr({ ...pr, lineItems });
+              setProcurementDefaultView("pr");
+              setView("procurement");
+            }}
+            onRecallPurchaseRequest={async (pr) => {
+              try {
+                await recallPurchaseRequestAction(pr.id ?? pr.pr_id);
+                refresh();
+                showToast(`Purchase Request "${pr.pr_no || pr.id}" recalled.`);
+              } catch (err) {
+                showToast(err?.message || "Failed to recall purchase request.", "error");
+              }
+            }}
+            onOpenPurchaseRequest={(pr) => {
+              const lineItems = (data?.purchaseRequestItems || []).filter((i) => String(i.pr_id) === String(pr.id ?? pr.pr_id));
+              setViewingPr({ ...pr, lineItems });
               setProcurementDefaultView("pr");
               setView("procurement");
             }}
@@ -951,6 +1057,28 @@ export default function InventoryView({ initialData }) {
             initialData={data}
             onNavigate={handleNavClick}
             onCreateOrder={() => {
+              setEditingPo(null);
+              setProcurementDefaultView("po");
+              setView("procurement");
+            }}
+            onEditPurchaseOrder={(po) => {
+              const lineItems = (data?.purchaseOrderItems || []).filter((i) => String(i.po_id) === String(po.id ?? po.po_id));
+              setEditingPo({ ...po, lineItems });
+              setProcurementDefaultView("po");
+              setView("procurement");
+            }}
+            onRecallPurchaseOrder={async (po) => {
+              try {
+                await recallPurchaseOrderAction(po.id ?? po.po_id);
+                refresh();
+                showToast(`Purchase Order "${po.po_no || po.id}" recalled.`);
+              } catch (err) {
+                showToast(err?.message || "Failed to recall purchase order.", "error");
+              }
+            }}
+            onOpenPurchaseOrder={(po) => {
+              const lineItems = (data?.purchaseOrderItems || []).filter((i) => String(i.po_id) === String(po.id ?? po.po_id));
+              setViewingPo({ ...po, lineItems });
               setProcurementDefaultView("po");
               setView("procurement");
             }}
@@ -959,6 +1087,54 @@ export default function InventoryView({ initialData }) {
 
         {view === "bom" && (
           <BomView initialData={data} hideSidebar />
+        )}
+
+        {view === "projectBom" && (
+          <ProjectBomView
+            hideSidebar
+            onNavigate={(targetView, params) => {
+              if (targetView === "projectBomDetail") {
+                setProjectBomDetail(params);
+                setView("projectBomDetail");
+              }
+            }}
+          />
+        )}
+
+        {view === "poReceiving" && (
+          <POReceivingView initialData={data} hideSidebar />
+        )}
+
+        {view === "bomRelease" && (
+          <BOMReleaseView initialData={data} hideSidebar />
+        )}
+
+        {view === "allMaterials" && (
+          <AllMaterialsView initialData={data} hideSidebar />
+        )}
+
+        {view === "projectBomDetail" && projectBomDetail && (
+          <ProjectBomDetailView
+            bomId={projectBomDetail.bomId}
+            mode={projectBomDetail.mode}
+            items={data?.items || []}
+            stockLevels={data?.stockLevels || []}
+            purchaseRequests={data?.purchaseRequests || []}
+            purchaseRequestItems={data?.purchaseRequestItems || []}
+            purchaseOrders={data?.purchaseOrders || []}
+            purchaseOrderItems={data?.purchaseOrderItems || []}
+            onBack={() => {
+              setProjectBomDetail(null);
+              setView("projectBom");
+            }}
+            onNavigate={(targetView, params) => {
+              if (targetView === "procurement") {
+                setEditingPr({ lineItems: params.lineItems, remarks: params.remarks || "" });
+                setProcurementDefaultView("pr");
+                setView("procurement");
+              }
+            }}
+          />
         )}
       </main>
 

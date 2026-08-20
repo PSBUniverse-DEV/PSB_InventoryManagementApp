@@ -39,13 +39,34 @@ function displayValue(value) {
   return value;
 }
 
-export default function PurchaseOrderListView({ initialData, onNavigate, onCreateOrder }) {
+const EDITABLE_STATUSES = new Set(["saved", "recalled", "returned"]);
+const RECALLABLE_STATUSES = new Set(["pending approval", "pending for approval"]);
+
+export default function PurchaseOrderListView({ initialData, onNavigate, onCreateOrder, onEditPurchaseOrder, onRecallPurchaseOrder, onOpenPurchaseOrder }) {
   const router = useRouter();
   const data = initialData || {};
   const [selectedRowId, setSelectedRowId] = useState(null);
 
   const purchaseOrders = data?.purchaseOrders || [];
+  const purchaseOrderItems = data?.purchaseOrderItems || [];
   const statuses = data?.purchaseRequestStatuses || [];
+  const units = data?.config?.units || [];
+
+  const unitById = useMemo(() => {
+    const map = {};
+    units.forEach((u) => { map[String(u.id)] = u.abbreviation || u.name; });
+    return map;
+  }, [units]);
+
+  const itemsByPoId = useMemo(() => {
+    const map = {};
+    purchaseOrderItems.forEach((item) => {
+      const poId = String(item.po_id);
+      if (!map[poId]) map[poId] = [];
+      map[poId].push(item);
+    });
+    return map;
+  }, [purchaseOrderItems]);
 
   const statusById = useMemo(() => {
     const map = {};
@@ -111,11 +132,73 @@ export default function PurchaseOrderListView({ initialData, onNavigate, onCreat
     []
   );
 
+  const canEditPo = useCallback((row) => {
+    const name = String(row.statusName || "").toLowerCase();
+    return EDITABLE_STATUSES.has(name);
+  }, []);
+
+  const canRecallPo = useCallback((row) => {
+    const name = String(row.statusName || "").toLowerCase();
+    return RECALLABLE_STATUSES.has(name);
+  }, []);
+
   const actions = useMemo(
     () => [
       { key: "view", label: "View", type: "secondary", icon: "eye", onClick: (row) => toggleExpand(row.id) },
+      { key: "open", label: "Open", type: "secondary", icon: "file-lines", onClick: (row) => onOpenPurchaseOrder ? onOpenPurchaseOrder(row) : undefined },
+      {
+        key: "edit",
+        label: "Edit",
+        type: "secondary",
+        icon: "edit",
+        visible: (row) => canEditPo(row),
+        onClick: (row) => onEditPurchaseOrder ? onEditPurchaseOrder(row) : undefined,
+      },
+      {
+        key: "recall",
+        label: "Recall",
+        type: "danger",
+        icon: "rotate-left",
+        visible: (row) => canRecallPo(row),
+        confirm: true,
+        confirmMessage: (row) => `Recall "${row.po_no || row.id}"? This will set its status to Recalled.`,
+        onClick: (row) => onRecallPurchaseOrder ? onRecallPurchaseOrder(row) : undefined,
+      },
     ],
-    [toggleExpand]
+    [toggleExpand, canEditPo, onEditPurchaseOrder, canRecallPo, onRecallPurchaseOrder, onOpenPurchaseOrder]
+  );
+
+  const detailColumns = useMemo(
+    () => [
+      { key: "itemName", label: "Item", sortable: true, render: (item) => <span className="fw-semibold">{item.itemName}</span> },
+      { key: "itemSku", label: "SKU", sortable: true, render: (item) => <span className="text-muted small">{displayValue(item.itemSku)}</span> },
+      { key: "quantity", label: "Qty", sortable: true, align: "center", render: (item) => <span className="inventory-mono">{item.quantity}</span> },
+      { key: "uom_id", label: "Unit", sortable: true, align: "center", render: (item) => unitById[String(item.uom_id)] || displayValue(item.uom_id) },
+      { key: "est_unit_cost", label: "Est. Unit Cost", sortable: true, align: "right", render: (item) => <span className="inventory-mono">{formatCurrency(item.est_unit_cost)}</span> },
+      { key: "est_total_cost", label: "Est. Total Cost", sortable: true, align: "right", render: (item) => <span className="inventory-mono fw-semibold">{formatCurrency(item.est_total_cost)}</span> },
+    ],
+    [unitById]
+  );
+
+  const renderDetail = useCallback(
+    (row) => {
+      const lineItems = itemsByPoId[row.id] || [];
+      return (
+        <div className="po-detail-panel">
+          <h4 className="po-detail-title">Order Items</h4>
+          <TableZ
+            data={lineItems}
+            columns={detailColumns}
+            rowIdKey="id"
+            hideSearch
+            hideFooter
+            showActionColumn={false}
+            emptyMessage="No items for this order."
+          />
+        </div>
+      );
+    },
+    [itemsByPoId, detailColumns]
   );
 
   return (
@@ -169,6 +252,7 @@ export default function PurchaseOrderListView({ initialData, onNavigate, onCreat
           onRowClick={handleRowClick}
           searchPlaceholder="Search purchase orders..."
           emptyMessage="No purchase orders found."
+          renderDetail={renderDetail}
         />
       </Card>
 
@@ -250,6 +334,29 @@ export default function PurchaseOrderListView({ initialData, onNavigate, onCreat
           overflow: hidden;
           text-overflow: ellipsis;
           vertical-align: middle;
+        }
+        .po-detail-panel {
+          padding: 12px 14px 16px;
+        }
+        .po-detail-title {
+          margin: 0 0 12px;
+          font-size: 12px;
+          font-weight: 800;
+          color: #66737C;
+          text-transform: uppercase;
+          letter-spacing: 0.04em;
+        }
+        .po-detail-empty {
+          margin: 0;
+          color: #8A969E;
+          font-size: 12px;
+        }
+        .po-detail-panel .psb-ui-table-shell {
+          padding: 0;
+        }
+        .po-detail-panel .psb-ui-table-shell .card {
+          border: none;
+          box-shadow: none;
         }
 
         /* Mobile-first responsive enhancements */

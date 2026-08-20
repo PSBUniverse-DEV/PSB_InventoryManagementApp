@@ -51,7 +51,10 @@ function displayValue(value) {
   return value;
 }
 
-export default function PurchaseRequestListView({ initialData, onNavigate, onCreateRequest, onEditPurchaseRequest, onCreatePo }) {
+const RECALLABLE_STATUSES = new Set(["pending approval", "pending for approval"]);
+const EDITABLE_STATUSES = new Set(["saved", "recalled", "returned"]);
+
+export default function PurchaseRequestListView({ initialData, onNavigate, onCreateRequest, onEditPurchaseRequest, onCreatePo, onRecallPurchaseRequest, onOpenPurchaseRequest }) {
   const router = useRouter();
   const data = initialData || {};
   const [selectedRowId, setSelectedRowId] = useState(null);
@@ -175,10 +178,21 @@ export default function PurchaseRequestListView({ initialData, onNavigate, onCre
     []
   );
 
+  const canRecallPr = useCallback((row) => {
+    const name = String(row.statusName || "").toLowerCase();
+    return RECALLABLE_STATUSES.has(name);
+  }, []);
+
+  const canEditPr = useCallback((row) => {
+    const name = String(row.statusName || "").toLowerCase();
+    return EDITABLE_STATUSES.has(name);
+  }, []);
+
   const actions = useMemo(
     () => [
       { key: "view", label: "View", type: "secondary", icon: "eye", onClick: (row) => toggleExpand(row.id) },
-      { key: "edit", label: "Edit", type: "secondary", icon: "edit", onClick: (row) => handleEdit(row) },
+      { key: "open", label: "Open", type: "secondary", icon: "file-lines", onClick: (row) => onOpenPurchaseRequest ? onOpenPurchaseRequest(row) : undefined },
+      { key: "edit", label: "Edit", type: "secondary", icon: "edit", visible: (row) => canEditPr(row), onClick: (row) => handleEdit(row) },
       {
         key: "createPo",
         label: "Create New Purchase Order",
@@ -187,8 +201,18 @@ export default function PurchaseRequestListView({ initialData, onNavigate, onCre
         visible: (row) => canCreatePo(row),
         onClick: (row) => onCreatePo ? onCreatePo(row) : undefined,
       },
+      {
+        key: "recall",
+        label: "Recall",
+        type: "danger",
+        icon: "rotate-left",
+        visible: (row) => canRecallPr(row),
+        confirm: true,
+        confirmMessage: (row) => `Recall "${row.pr_no || row.id}"? This will set its status to Recalled.`,
+        onClick: (row) => onRecallPurchaseRequest ? onRecallPurchaseRequest(row) : undefined,
+      },
     ],
-    [toggleExpand, handleEdit, canCreatePo, onCreatePo]
+    [toggleExpand, handleEdit, canCreatePo, onCreatePo, canRecallPr, onRecallPurchaseRequest, canEditPr, onOpenPurchaseRequest]
   );
 
   const detailColumns = useMemo(
