@@ -94,6 +94,7 @@ export default function InventoryView({ initialData }) {
   const [projectBomDetail, setProjectBomDetail] = useState(null); // { bomId, mode }
   const [search, setSearch] = useState("");
   const [lowStockSearch, setLowStockSearch] = useState("");
+  const [lowStockPage, setLowStockPage] = useState(1);
   const [filterWh, setFilterWh] = useState("all");
   const [modal, setModal] = useState(null);
   const [isBusy, setIsBusy] = useState(false);
@@ -223,6 +224,29 @@ export default function InventoryView({ initialData }) {
       whName(item.warehouse_id).toLowerCase().includes(q)
     );
   }, [filteredLowStock, lowStockSearch, whName]);
+
+  // ─── Low stock pagination ─────────────────────────────────
+  const LOW_STOCK_PAGE_SIZE = 10;
+  const lowStockPageCount = useMemo(
+    () => Math.max(1, Math.ceil(searchedLowStock.length / LOW_STOCK_PAGE_SIZE)),
+    [searchedLowStock],
+  );
+  const paginatedLowStock = useMemo(() => {
+    const start = (lowStockPage - 1) * LOW_STOCK_PAGE_SIZE;
+    return searchedLowStock.slice(start, start + LOW_STOCK_PAGE_SIZE);
+  }, [searchedLowStock, lowStockPage]);
+
+  // Reset to page 1 when search text changes
+  useEffect(() => {
+    setLowStockPage(1);
+  }, [lowStockSearch]);
+
+  // Clamp page if it goes out of range (e.g. data shrinks)
+  useEffect(() => {
+    if (lowStockPage > lowStockPageCount) {
+      setLowStockPage(lowStockPageCount);
+    }
+  }, [lowStockPage, lowStockPageCount]);
 
   const filteredCheckedOut = useMemo(
     () => filteredItems.filter((i) => statusLookup[String(i.status_id)] === "In Use").length,
@@ -771,65 +795,134 @@ export default function InventoryView({ initialData }) {
               <StatCard label="Active locations" value={(data?.warehouses || []).length} />
             </div>
             <div className="inventory-dashboard-panels">
-              <Card className="inventory-panel" title={<><AlertTriangle size={15} /> Low stock alerts</>}>
-                <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.5rem" }}>
-                  <div style={{ position: "relative", flex: 1 }}>
-                    <Search size={14} style={{ position: "absolute", left: "0.5rem", top: "50%", transform: "translateY(-50%)", color: "var(--psb-muted)", pointerEvents: "none" }} />
-                    <input
-                      type="text"
-                      className="form-control form-control-sm"
-                      placeholder="Search low stock items..."
-                      value={lowStockSearch}
-                      onChange={(e) => setLowStockSearch(e.target.value)}
-                      style={{ paddingLeft: "2rem" }}
-                    />
+              <section className="proc-section">
+                <div className="proc-section-header">
+                  <div>
+                    <h2 className="proc-section-title"><AlertTriangle size={15} /> Low stock alerts</h2>
+                    <p className="proc-section-desc">Materials at or below their minimum reorder threshold.</p>
                   </div>
-                  <Button
-                    variant="primary"
-                    size="sm"
-                    onClick={() => {
-                      const lineItems = filteredLowStock.map((item) => ({
-                        item_id: item.id || item.item_id,
-                        itemName: item.name,
-                        itemSku: item.sku,
-                        quantity: Math.max(0, (item.min_threshold || 0) - (item.quantity || 0)),
-                        uom_id: item.unit_id || null,
-                        est_unit_cost: item.cost || 0,
-                      }));
-                      setEditingPr({ lineItems });
-                      setProcurementDefaultView("pr");
-                      setView("procurement");
-                    }}
-                    disabled={filteredLowStock.length === 0}
-                    style={{ flexShrink: 0 }}
-                  >
-                    <FileText size={14} /> Create PR
-                  </Button>
+                  <div className="proc-lowstock-toolbar">
+                    <div style={{ position: "relative", flex: 1 }}>
+                      <Search size={14} style={{ position: "absolute", left: "0.5rem", top: "50%", transform: "translateY(-50%)", color: "var(--psb-muted)", pointerEvents: "none" }} />
+                      <input
+                        type="text"
+                        className="form-control form-control-sm"
+                        placeholder="Search low stock items..."
+                        value={lowStockSearch}
+                        onChange={(e) => setLowStockSearch(e.target.value)}
+                        style={{ paddingLeft: "2rem" }}
+                      />
+                    </div>
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      onClick={() => {
+                        const lineItems = filteredLowStock.map((item) => ({
+                          item_id: item.id || item.item_id,
+                          itemName: item.name,
+                          itemSku: item.sku,
+                          quantity: Math.max(0, (item.min_threshold || 0) - (item.quantity || 0)),
+                          uom_id: item.unit_id || null,
+                          est_unit_cost: item.cost || 0,
+                        }));
+                        setEditingPr({ lineItems });
+                        setProcurementDefaultView("pr");
+                        setView("procurement");
+                      }}
+                      disabled={filteredLowStock.length === 0}
+                      style={{ flexShrink: 0 }}
+                    >
+                      <FileText size={14} /> Create PR
+                    </Button>
+                  </div>
                 </div>
-                <TableZ
-                  data={searchedLowStock}
-                  hideSearch
-                  columns={[
-                    { key: "name", label: "Item", sortable: true, render: (row) => (
-                      <span style={{ minWidth: "200px", display: "inline-block" }}>{row.name}</span>
-                    )},
-                    { key: "warehouse", label: "Warehouse", sortable: true, render: (row) => whName(row.warehouse_id) },
-                    { key: "quantity", label: "Qty", sortable: true, align: "center" },
-                    { key: "min_threshold", label: "Min", sortable: true, align: "center" },
-                    { key: "status", label: "Status", align: "center", render: (row) => {
-                      const ratio = (row.quantity || 0) / Math.max(1, row.min_threshold || 1);
-                      if (ratio === 0) return <Badge variant="danger">Out</Badge>;
-                      if (ratio < 0.5) return <Badge variant="pending">Critical</Badge>;
-                      return <Badge variant="pending">Low</Badge>;
-                    }},
-                  ]}
-                  rowIdKey="id"
-                  searchPlaceholder="Search low stock items..."
-                  pageSizeOptions={[10]}
-                  defaultPageSize={10}
-                  emptyMessage="All materials are above their reorder threshold."
-                />
-              </Card>
+                <div className="proc-card">
+                  <div className="proc-table-container">
+                    <table className="proc-table proc-table--lowstock">
+                      <thead>
+                        <tr>
+                          <th>Item</th>
+                          <th>Warehouse</th>
+                          <th style={{ textAlign: "center" }}>Qty</th>
+                          <th style={{ textAlign: "center" }}>Min</th>
+                          <th style={{ textAlign: "center" }}>Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {searchedLowStock.length === 0 && (
+                          <tr className="proc-table-empty">
+                            <td colSpan={5}>
+                              <div className="proc-empty-state">
+                                <div className="proc-empty-state__icon">—</div>
+                                <strong>No low stock items found.</strong>
+                                <span>All materials are above their reorder threshold.</span>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                        {paginatedLowStock.map((row) => {
+                          const ratio = (row.quantity || 0) / Math.max(1, row.min_threshold || 1);
+                          let statusClass = "proc-status--default";
+                          let statusLabel = "Low";
+                          if (ratio === 0) {
+                            statusClass = "proc-status--rejected";
+                            statusLabel = "Out";
+                          } else if (ratio < 0.5) {
+                            statusClass = "proc-status--pending";
+                            statusLabel = "Critical";
+                          }
+                          return (
+                            <tr key={row.id} className="proc-table-row--clickable">
+                              <td className="fw-semibold" style={{ minWidth: "200px" }}>{row.name}</td>
+                              <td>{whName(row.warehouse_id)}</td>
+                              <td className="inventory-mono" style={{ textAlign: "center" }}>{row.quantity}</td>
+                              <td className="inventory-mono" style={{ textAlign: "center" }}>{row.min_threshold}</td>
+                              <td style={{ textAlign: "center" }}>
+                                <span className={`proc-status ${statusClass}`}>{statusLabel}</span>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                  {searchedLowStock.length > 0 && (
+                    <div className="proc-pagination">
+                      <span className="proc-pagination-info">
+                        Showing {Math.min((lowStockPage - 1) * LOW_STOCK_PAGE_SIZE + 1, searchedLowStock.length)}–{Math.min(lowStockPage * LOW_STOCK_PAGE_SIZE, searchedLowStock.length)} of {searchedLowStock.length}
+                      </span>
+                      <div className="proc-pagination-controls">
+                        <button
+                          type="button"
+                          className="proc-pagination-btn"
+                          onClick={() => setLowStockPage((p) => Math.max(1, p - 1))}
+                          disabled={lowStockPage <= 1}
+                        >
+                          ‹ Prev
+                        </button>
+                        {Array.from({ length: lowStockPageCount }, (_, i) => i + 1).map((pageNum) => (
+                          <button
+                            key={pageNum}
+                            type="button"
+                            className={`proc-pagination-btn${pageNum === lowStockPage ? " is-active" : ""}`}
+                            onClick={() => setLowStockPage(pageNum)}
+                          >
+                            {pageNum}
+                          </button>
+                        ))}
+                        <button
+                          type="button"
+                          className="proc-pagination-btn"
+                          onClick={() => setLowStockPage((p) => Math.min(lowStockPageCount, p + 1))}
+                          disabled={lowStockPage >= lowStockPageCount}
+                        >
+                          Next ›
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </section>
               <Card className="inventory-panel" title="Recent activity">
                 {(filteredTransactions || []).slice(0, 6).map((tx) => (
                   <div key={tx.id} className="inventory-activity-row">

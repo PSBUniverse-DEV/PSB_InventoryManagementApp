@@ -43,6 +43,7 @@ export default function AllMaterialsView({ initialData, hideSidebar = false }) {
   const [loading, setLoading] = useState(true);
   const [expandedIds, setExpandedIds] = useState(new Set());
   const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
 
   const loadMaterials = useCallback(async () => {
     setLoading(true);
@@ -83,6 +84,27 @@ export default function AllMaterialsView({ initialData, hideSidebar = false }) {
         (m.sku || "").toLowerCase().includes(q)
     );
   }, [materials, search]);
+
+  // ─── Pagination ────────────────────────────────────────────
+  const PAGE_SIZE = 10;
+  const pageCount = useMemo(
+    () => Math.max(1, Math.ceil(filteredMaterials.length / PAGE_SIZE)),
+    [filteredMaterials],
+  );
+  const paginatedMaterials = useMemo(() => {
+    const start = (page - 1) * PAGE_SIZE;
+    return filteredMaterials.slice(start, start + PAGE_SIZE);
+  }, [filteredMaterials, page]);
+
+  // Reset to page 1 when search text changes
+  useEffect(() => {
+    setPage(1);
+  }, [search]);
+
+  // Clamp page if it goes out of range (e.g. data shrinks)
+  useEffect(() => {
+    if (page > pageCount) setPage(pageCount);
+  }, [page, pageCount]);
 
   // ─── KPI Metrics ───────────────────────────────────────────
 
@@ -191,7 +213,7 @@ export default function AllMaterialsView({ initialData, hideSidebar = false }) {
                     </td>
                   </tr>
                 )}
-                {filteredMaterials.map((mat) => {
+                {paginatedMaterials.map((mat) => {
                   const matId = String(mat.id);
                   const isExpanded = expandedIds.has(matId);
                   const isLow = mat.available <= (mat.minThreshold || 0);
@@ -257,6 +279,41 @@ export default function AllMaterialsView({ initialData, hideSidebar = false }) {
               </tbody>
             </table>
           </div>
+          {filteredMaterials.length > 0 && (
+            <div className="proc-pagination">
+              <span className="proc-pagination-info">
+                Showing {Math.min((page - 1) * PAGE_SIZE + 1, filteredMaterials.length)}–{Math.min(page * PAGE_SIZE, filteredMaterials.length)} of {filteredMaterials.length}
+              </span>
+              <div className="proc-pagination-controls">
+                <button
+                  type="button"
+                  className="proc-pagination-btn"
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  disabled={page <= 1}
+                >
+                  ‹ Prev
+                </button>
+                {Array.from({ length: pageCount }, (_, i) => i + 1).map((pageNum) => (
+                  <button
+                    key={pageNum}
+                    type="button"
+                    className={`proc-pagination-btn${pageNum === page ? " is-active" : ""}`}
+                    onClick={() => setPage(pageNum)}
+                  >
+                    {pageNum}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  className="proc-pagination-btn"
+                  onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
+                  disabled={page >= pageCount}
+                >
+                  Next ›
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </section>
 

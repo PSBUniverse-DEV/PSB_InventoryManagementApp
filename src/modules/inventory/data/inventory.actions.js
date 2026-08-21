@@ -576,6 +576,100 @@ export async function resolveStatusIdByName(name) {
 
 //#region ─── PURCHASE REQUESTS ─────────────────────────────────────
 
+/**
+ * Resolve a default category id for new materials.
+ * Prefers a "Material" category (by key or name); otherwise falls back to the first category.
+ * Throws a clear error if no category exists in master data.
+ */
+async function resolveDefaultCategoryId(supabase) {
+  const { data, error } = await supabase
+    .from("inv_s_category")
+    .select("category_id, key, name")
+    .order("category_id", { ascending: true })
+    .limit(50);
+
+  if (error) throw new Error(`Failed to resolve default category: ${error.message}`);
+  const categories = data ?? [];
+  const material = categories.find(
+    (c) => String(c.key || "").toLowerCase() === "material" || String(c.name || "").toLowerCase() === "material"
+  );
+  const chosen = material || categories[0];
+  if (!chosen?.category_id) {
+    throw new Error("No category found in master data. Please create a category before adding new materials.");
+  }
+  return chosen.category_id;
+}
+
+/**
+ * Resolve a default warehouse id for new materials.
+ * Returns the first warehouse in master data; throws a clear error if none exist.
+ */
+async function resolveDefaultWarehouseId(supabase) {
+  const { data, error } = await supabase
+    .from("inv_s_warehouse")
+    .select("warehouse_id, name")
+    .order("name", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) throw new Error(`Failed to resolve default warehouse: ${error.message}`);
+  if (data?.warehouse_id == null) {
+    throw new Error("No warehouse found in master data. Please create a warehouse before adding new materials.");
+  }
+  return data.warehouse_id;
+}
+
+/**
+ * Resolve a PR line item to a real item_id.
+ * If the line is a quick-added new material (isNewItem), it is first inserted
+ * into the inventory master table (inv_s_inventoryitem) and the new item_id
+ * is returned. Otherwise the existing itemId is returned as-is.
+ */
+async function resolvePrLineItemId(supabase, lineItem) {
+  if (!lineItem?.isNewItem) {
+    return lineItem?.itemId || null;
+  }
+
+  const name = (lineItem?.newItemName || "").trim();
+  if (!name) return null;
+
+  const sku = (lineItem?.newItemSku || "").trim() || `NEW-${Date.now()}`;
+  const unitId = lineItem?.unitId ? Number(lineItem.unitId) : null;
+  const categoryId = lineItem?.categoryId ? Number(lineItem.categoryId) : await resolveDefaultCategoryId(supabase);
+  const warehouseId = lineItem?.warehouseId ? Number(lineItem.warehouseId) : await resolveDefaultWarehouseId(supabase);
+
+  // Insert into master data
+  const { data, error } = await supabase
+    .from("inv_s_inventoryitem")
+    .insert([{
+      name,
+      description: name,
+      sku,
+      unit_id: unitId,
+      category_id: categoryId,
+      warehouse_id: warehouseId,
+      classification: "Material",
+      is_active: true,
+    }])
+    .select("item_id")
+    .single();
+
+  if (error) {
+    // Duplicate SKU is the most likely failure — surface a readable message.
+    const msg = String(error.message || "");
+    if (msg.toLowerCase().includes("duplicate") || msg.toLowerCase().includes("unique") || msg.toLowerCase().includes("sku")) {
+      throw new Error(`New material "${name}" could not be added: SKU "${sku}" already exists in master data.`);
+    }
+    throw new Error(`Failed to create new material "${name}": ${error.message}`);
+  }
+
+  if (!data?.item_id) {
+    throw new Error(`Failed to create new material "${name}": no item_id returned.`);
+  }
+
+  return data.item_id;
+}
+
 export async function createPurchaseRequestAction(payload) {
   const supabase = getSupabaseAdmin();
 
@@ -609,18 +703,22 @@ export async function createPurchaseRequestAction(payload) {
   if (!header) throw new Error("Failed to create purchase request: no data returned.");
 
   const prId = header.pr_id;
-  const items = (payload?.items || []).filter((i) => i.itemId);
+  const items = (payload?.items || []).filter((i) => i.itemId || (i.isNewItem && i.newItemName));
 
   // 2. Insert line items (if any)
   if (items.length > 0) {
-    const lineRows = items.map((i) => ({
-      pr_id: prId,
-      item_id: i.itemId || null,
-      quantity: Number(i.quantity) || 0,
-      uom_id: i.unitId || null,
-      est_unit_cost: i.estUnitCost ? Number(i.estUnitCost) : null,
-      est_total_cost: (Number(i.quantity) || 0) * (i.estUnitCost ? Number(i.estUnitCost) : 0),
-    }));
+    const lineRows = [];
+    for (const i of items) {
+      const itemId = await resolvePrLineItemId(supabase, i);
+      lineRows.push({
+        pr_id: prId,
+        item_id: itemId,
+        quantity: Number(i.quantity) || 0,
+        uom_id: i.unitId || null,
+        est_unit_cost: i.estUnitCost ? Number(i.estUnitCost) : null,
+        est_total_cost: (Number(i.quantity) || 0) * (i.estUnitCost ? Number(i.estUnitCost) : 0),
+      });
+    }
 
     const { error: itemsError } = await supabase
       .from("inv_t_purchaserequest_items")
@@ -660,7 +758,7 @@ export async function updatePurchaseRequestAction(prId, payload) {
   if (payload?.dateRequired !== undefined) patch.date_required = payload.dateRequired;
   if (payload?.priority !== undefined) patch.priority = payload.priority;
   if (payload?.remarks !== undefined) patch.remarks = payload.remarks;
-  patch.status_id = statusId;
+  patch.status_id = 1;
   patch.updated_at = new Date().toISOString();
 
   const { data: header, error: headerError } = await supabase
@@ -670,10 +768,10 @@ export async function updatePurchaseRequestAction(prId, payload) {
     .select("*")
     .single();
 
-  if (headerError) throw new Error(`Failed to update purchase request: ${headerError.message}`);
+  if (headerError) throw new Error(`Failed to insert purchase request: ${headerError.message}`);
   if (!header) throw new Error("Failed to update purchase request: no data returned.");
 
-  const items = (payload?.items || []).filter((i) => i.itemId);
+  const items = (payload?.items || []).filter((i) => i.itemId || (i.isNewItem && i.newItemName));
 
   // 2. Replace line items: delete existing, then insert new set.
   const { error: deleteError } = await supabase
@@ -684,14 +782,18 @@ export async function updatePurchaseRequestAction(prId, payload) {
   if (deleteError) throw new Error(`Failed to update purchase request items: ${deleteError.message}`);
 
   if (items.length > 0) {
-    const lineRows = items.map((i) => ({
-      pr_id: prId,
-      item_id: i.itemId || null,
-      quantity: Number(i.quantity) || 0,
-      uom_id: i.unitId || null,
-      est_unit_cost: i.estUnitCost ? Number(i.estUnitCost) : null,
-      est_total_cost: (Number(i.quantity) || 0) * (i.estUnitCost ? Number(i.estUnitCost) : 0),
-    }));
+    const lineRows = [];
+    for (const i of items) {
+      const itemId = await resolvePrLineItemId(supabase, i);
+      lineRows.push({
+        pr_id: prId,
+        item_id: itemId,
+        quantity: Number(i.quantity) || 0,
+        uom_id: i.unitId || null,
+        est_unit_cost: i.estUnitCost ? Number(i.estUnitCost) : null,
+        est_total_cost: (Number(i.quantity) || 0) * (i.estUnitCost ? Number(i.estUnitCost) : 0),
+      });
+    }
 
     const { error: itemsError } = await supabase
       .from("inv_t_purchaserequest_items")

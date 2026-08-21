@@ -322,6 +322,200 @@
   line-height: 1.1;
 }
 
+/* ─── Proc-style table (Low stock alerts, matches procurement) ─── */
+
+.proc-section { margin-bottom: 18px; }
+.proc-section-header {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.proc-section-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: var(--psb-text);
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.proc-section-desc {
+  margin: 3px 0 0;
+  color: var(--psb-muted);
+  font-size: 12px;
+}
+
+.proc-lowstock-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+}
+
+.proc-card {
+  min-width: 0;
+  background: #ffffff;
+  border: 1px solid #E1E6E9;
+  border-radius: 10px;
+  box-shadow: 0 2px 8px rgba(17, 21, 24, 0.05);
+}
+
+.proc-table-container {
+  width: 100%;
+  overflow-x: auto;
+  border-top: 1px solid #E1E6E9;
+}
+.proc-table {
+  width: 100%;
+  min-width: 640px;
+  border-collapse: collapse;
+}
+.proc-table th,
+.proc-table td {
+  padding: 13px 16px;
+  text-align: left;
+  white-space: nowrap;
+  border-bottom: 1px solid #E1E6E9;
+}
+.proc-table th {
+  background: #F8FAFB;
+  color: #8A969E;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.proc-table td {
+  color: #66737C;
+  font-size: 12px;
+}
+.proc-table tbody tr {
+  transition: background 0.15s ease;
+  cursor: pointer;
+}
+.proc-table tbody tr:hover { background: #F8FBFD; }
+.proc-table-row--clickable { cursor: pointer; }
+.proc-table-row--clickable:hover { background: #F0F6FA; }
+.proc-table-empty { cursor: default !important; }
+.proc-table-empty:hover { background: transparent !important; }
+.proc-table-empty td { height: 150px; text-align: center; }
+
+.proc-empty-state {
+  min-height: 150px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  text-align: center;
+  color: #8A969E;
+}
+.proc-empty-state__icon {
+  width: 42px; height: 42px;
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: #F8FAFB;
+  border: 1px solid #E1E6E9;
+  color: #8A969E;
+  font-size: 16px;
+}
+.proc-empty-state strong {
+  color: #66737C;
+  font-size: 13px;
+}
+.proc-empty-state span {
+  margin-top: 3px;
+  font-size: 11px;
+}
+
+.proc-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 8px;
+  border-radius: 20px;
+  font-size: 10px;
+  font-weight: 700;
+}
+.proc-status::before {
+  content: "";
+  width: 5px; height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.proc-status--pending { background: #FFF5E8; color: #C98228; }
+.proc-status--rejected { background: #FDEEEE; color: #C94E4E; }
+.proc-status--default { background: #F3F5F6; color: #66737C; }
+
+/* ─── Pagination (low stock table) ─── */
+.proc-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 16px;
+  border-top: 1px solid #E1E6E9;
+  background: #F8FAFB;
+}
+.proc-pagination-info {
+  color: #66737C;
+  font-size: 11px;
+  white-space: nowrap;
+}
+.proc-pagination-controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.proc-pagination-btn {
+  min-width: 30px;
+  height: 30px;
+  padding: 0 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #E1E6E9;
+  border-radius: 6px;
+  background: #FFFFFF;
+  color: #66737C;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+.proc-pagination-btn:hover:not(:disabled) {
+  background: #F0F6FA;
+  border-color: #CBD3D8;
+}
+.proc-pagination-btn.is-active {
+  background: #1877B9;
+  border-color: #1877B9;
+  color: #FFFFFF;
+}
+.proc-pagination-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+@media (min-width: 640px) {
+  .proc-section-header {
+    flex-direction: row;
+    align-items: flex-end;
+  }
+  .proc-lowstock-toolbar {
+    width: auto;
+    flex: 0 0 auto;
+  }
+}
+
 /* ─── Dashboard panels ─── */
 
 .inventory-dashboard-panels {
