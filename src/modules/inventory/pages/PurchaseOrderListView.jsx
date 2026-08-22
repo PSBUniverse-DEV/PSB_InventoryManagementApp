@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { FileText, Plus, ArrowLeft, RefreshCw } from "lucide-react";
 import { Button, Card, Badge } from "@/shared/components/ui";
 import TableZ from "@/shared/components/ui/table/TableZ";
+import { printPurchaseOrder } from "../utils/printPurchaseOrder";
 
 const PENDING_STATUS_NAMES = new Set([
   "pending",
@@ -90,6 +91,11 @@ export default function PurchaseOrderListView({ initialData, onNavigate, onCreat
     toggleExpand(row.id);
   }, [toggleExpand]);
 
+  const handlePrintPo = useCallback((row) => {
+    const lineItems = itemsByPoId[row.id] || [];
+    printPurchaseOrder(row, lineItems, { unitById });
+  }, [itemsByPoId, unitById]);
+
   const totalSpend = useMemo(
     () => purchaseOrders.reduce((sum, po) => sum + (Number(po.est_total_cost) || 0), 0),
     [purchaseOrders]
@@ -146,6 +152,7 @@ export default function PurchaseOrderListView({ initialData, onNavigate, onCreat
     () => [
       { key: "view", label: "View", type: "secondary", icon: "eye", onClick: (row) => toggleExpand(row.id) },
       { key: "open", label: "Open", type: "secondary", icon: "file-lines", onClick: (row) => onOpenPurchaseOrder ? onOpenPurchaseOrder(row) : undefined },
+      { key: "print", label: "Print", type: "secondary", icon: "print", onClick: handlePrintPo },
       {
         key: "edit",
         label: "Edit",
@@ -165,7 +172,7 @@ export default function PurchaseOrderListView({ initialData, onNavigate, onCreat
         onClick: (row) => onRecallPurchaseOrder ? onRecallPurchaseOrder(row) : undefined,
       },
     ],
-    [toggleExpand, canEditPo, onEditPurchaseOrder, canRecallPo, onRecallPurchaseOrder, onOpenPurchaseOrder]
+    [toggleExpand, canEditPo, onEditPurchaseOrder, canRecallPo, onRecallPurchaseOrder, onOpenPurchaseOrder, handlePrintPo]
   );
 
   const detailColumns = useMemo(
