@@ -382,6 +382,7 @@ function UserMasterHeader({
 
 function UserTableSection({ tableRows, panelUserId, panelOpen, onRowClick }) {
   const columns = useMemo(() => [
+    { key: "employee_id", label: "Employee ID", width: 150, sortable: true },
     { key: "username", label: "Username", width: 170, sortable: true },
     { key: "full_name", label: "Full Name", width: 210, sortable: true },
     { key: "email", label: "Email", width: 280, sortable: true },
@@ -472,6 +473,8 @@ function UserPanelSection({
           <div className="umsp-tab-content">
             {activeTab === "profile" ? (
               <div className="row g-2">
+                <div className="col-12"><label className="form-label mb-1">Employee ID</label>
+                  <Input value={form.employee_id} readOnly disabled placeholder={panelMode === "add" ? "Auto-generated on save" : "--"} /></div>
                 <div className="col-12 col-md-6"><label className="form-label mb-1">Username</label>
                   <Input value={form.username} onChange={(e) => setForm((p) => ({ ...p, username: e.target.value }))} disabled={!panelEditable || isPanelLoading} placeholder="Enter username" /></div>
                 <div className="col-12 col-md-6"><label className="form-label mb-1">Email</label>

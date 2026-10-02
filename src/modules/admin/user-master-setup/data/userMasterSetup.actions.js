@@ -23,6 +23,35 @@ function ensureArray(value) { return Array.isArray(value) ? value : []; }
 
 function normalizePassword(value) { return String(value ?? "").trim(); }
 
+/**
+ * Computes the next sequential employee_id scoped to the current year.
+ *
+ * Format: {year}000001 (e.g. 2026000001). The year occupies the leading
+ * digits, and a zero-padded 6-digit sequence occupies the trailing digits,
+ * so IDs remain readable and sort chronologically by year.
+ *
+ * Business rule: the sequence resets implicitly each year because the
+ * lookup only scans employee_ids that fall within the current year's range.
+ */
+async function generateUniqueEmployeeId(supabase) {
+  const year = new Date().getFullYear();
+  const yearPrefix = year * 1000000; // e.g. 2026000000
+  const upperBound = yearPrefix + 999999;
+
+  const { data: maxRow, error: maxErr } = await supabase
+    .from("psb_s_user")
+    .select("employee_id")
+    .gte("employee_id", yearPrefix)
+    .lte("employee_id", upperBound)
+    .order("employee_id", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (maxErr) throw new Error(maxErr.message || "Failed to compute next employee_id.");
+
+  const lastNumber = maxRow?.employee_id ? Number(maxRow.employee_id) - yearPrefix : 0;
+  return yearPrefix + lastNumber + 1;
+}
+
 function readFirstText(row, fields, fallback = "") {
   for (const field of fields) {
     const value = row?.[field];
@@ -83,6 +112,7 @@ function mapUserMasterRows(rows) {
   return ensureArray(rows).map((row, index) => ({
     id: row?.user_id ?? `user-${index}`,
     user_id: row?.user_id ?? null,
+    employee_id: normalizeText(row?.employee_id) || "--",
     username: normalizeText(readFirstText(row, ["username", "user_name"], "--")) || "--",
     display_name: computeFullName(row),
     full_name: computeFullName(row),
@@ -101,6 +131,7 @@ function mapUserMasterDetail(row) {
   const fullName = computeFullName(row);
   return {
     id: row?.user_id ?? "", user_id: row?.user_id ?? null, auth_user_id: row?.auth_user_id ?? null,
+    employee_id: normalizeText(row?.employee_id),
     username: normalizeText(readFirstText(row, ["username", "user_name"], "")),
     email: normalizeText(readFirstText(row, ["email", "user_email"], "")),
     full_name: fullName, display_name: fullName,
@@ -479,10 +510,18 @@ export async function createUserAction(payload) {
   if (authRes.authUserId) createPayload.auth_user_id = authRes.authUserId;
 
   let created;
+  const MAX_EMPLOYEE_ID_ATTEMPTS = 5;
   try {
-    const { data, error } = await supabase.from("psb_s_user").insert(createPayload).select("*").single();
-    if (error) throw new Error(error.message || "Failed to create user.");
-    created = { ...data, full_name: computeFullName(data) };
+    for (let attempt = 1; attempt <= MAX_EMPLOYEE_ID_ATTEMPTS; attempt++) {
+      createPayload.employee_id = await generateUniqueEmployeeId(supabase);
+      const { data, error } = await supabase.from("psb_s_user").insert(createPayload).select("*").single();
+      if (!error) { created = { ...data, full_name: computeFullName(data) }; break; }
+      const isDuplicateEmployeeId = error?.code === "23505" && String(error?.message || "").includes("employee_id");
+      if (!isDuplicateEmployeeId || attempt === MAX_EMPLOYEE_ID_ATTEMPTS) {
+        throw new Error(error.message || "Failed to create user.");
+      }
+      // duplicate employee_id from a race — loop and regenerate
+    }
   } catch (err) {
     if (authRes.createdAuthUserId) await supabase.auth.admin.deleteUser(authRes.createdAuthUserId).catch(() => {});
     throw err;

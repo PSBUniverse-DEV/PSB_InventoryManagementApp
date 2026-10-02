@@ -4,12 +4,34 @@
  *
  * Authentication flow:
  *   1. Core Portal login sets psb_session (HttpOnly) + psb_user_payload (readable)
- *   2. Both cookies scoped to .psbuniverse.com — visible to all subdomains
- *   3. Subdomains read psb_user_payload cookie directly — no cross-origin API calls
- *   4. No CORS headers needed — zero network requests for auth
+ *   2. Both cookies are scoped to .psbuniverse.com — visible to all subdomains
+ *   3. The browser sends psb_session to Core's /api/auth/introspect automatically
+ *   4. Core verifies the signature with JWT_SECRET (which never leaves Core) and
+ *      answers two questions: "who is this?" and "may they open the app I asked about?"
+ *   5. The shell trusts that answer. It never verifies tokens itself and needs no
+ *      numeric app id, no JWT secret, and no Supabase keys.
+ *
+ * Why the shell asks Core instead of reading its own cookie:
+ *   psb_user_payload is a plain readable cookie, so anyone could edit it to claim
+ *   access to any module. Introspection asks the one server that holds the signing
+ *   key, so an edited or missing cookie changes nothing. The answer is cached for a
+ *   few seconds (INTROSPECT_TTL_MS) so normal navigation costs one request rather
+ *   than one per render.
  */
 
-const MODULE_ID = process.env.NEXT_PUBLIC_MODULE_ID;
+const MODULE_KEY = (process.env.NEXT_PUBLIC_MODULE_KEY || "").trim();
+export const SSO_ENABLED = ["dev", "prod"].includes(process.env.NEXT_PUBLIC_ENV || "local");
+const INTROSPECT_CORE_URL = process.env.NEXT_PUBLIC_CORE_PORTAL_URL || "https://www.psbuniverse.com";
+// Core resolves introspection same-origin; a module (any non-core module_key)
+// calls the core portal cross-origin with credentials.
+// Core itself: leave NEXT_PUBLIC_MODULE_KEY unset so the question is simply
+// "is this session valid?" rather than "is it valid for app X?".
+export const IS_MODULE = Boolean(MODULE_KEY) && MODULE_KEY !== "psbuniverse";
+const INTROSPECT_URL =
+  (IS_MODULE ? INTROSPECT_CORE_URL : "") +
+  "/api/auth/introspect" +
+  (MODULE_KEY ? `?module=${encodeURIComponent(MODULE_KEY)}` : "");
+const RENEW_SESSION_URL = (IS_MODULE ? INTROSPECT_CORE_URL : "") + "/api/auth/refresh-token";
 
 // ── Local Cookie Helpers ────────────────────────────────────────────────────
 
@@ -90,23 +112,99 @@ export function clearPSBUserPayloadCookie() {
   document.cookie = cookieStr;
 }
 
-// ── Session Validation — Local Only ────────────────────────────────────────
+// ── Verified Session via Core Introspection (single source of truth) ────────
+// CORE alone holds JWT_SECRET and verifies the signed psb_session; this returns
+// core's verified payload { userId, email, fullName, modules, roles,
+// authorizedForApp, moduleKnown, appId }. A short cache keeps it to one request
+// per navigation instead of one per render.
+let introspectCache = { at: 0, data: null };
+let introspectInFlight = null;
+let introspectGeneration = 0;
+const INTROSPECT_TTL_MS = 30_000;
 
-/**
- * Validate session by reading the psb_user_payload cookie locally.
- * No cross-origin API calls. No CORS. ~0ms latency.
- *
- * The cookie is set by Core Portal on login and scoped to .psbuniverse.com
- * so it's automatically available on all subdomains.
- *
- * @returns {Promise<Object|null>} Session payload { userId, email, fullName, modules, roles } or null
- */
-export async function validateSessionToken() {
-  return getPSBUserPayloadFromCookie();
+async function fetchIntrospect() {
+  const generation = introspectGeneration;
+  try {
+    const res = await fetch(INTROSPECT_URL, {
+      credentials: "include",
+      headers: { Accept: "application/json" },
+      cache: "no-store",
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (generation !== introspectGeneration) return introspectCache.data ?? undefined;
+    if (!res.ok) {
+      if (res.status !== 401) {
+        return introspectCache.data ?? undefined;
+      }
+      introspectCache = { at: Date.now(), data: null };
+      return null;
+    }
+    const data = await res.json();
+    if (generation !== introspectGeneration) return introspectCache.data ?? undefined;
+    const payload = data && data.authenticated ? data : null;
+    introspectCache = { at: Date.now(), data: payload };
+    return payload;
+  } catch {
+    // Core unreachable / transient network error: keep the last known result
+    // rather than hard-logging-out mid-session.
+    return introspectCache.data ?? undefined;
+  } finally {
+    if (generation === introspectGeneration) introspectInFlight = null;
+  }
 }
 
 /**
- * Get the current user's session data (local-only).
+ * Return the current VERIFIED session payload from core, or null for an ended session.
+ * Returns undefined when core is unavailable and no verified result is cached.
+ * Shape: { userId, email, fullName, modules, roles, authorizedForApp, moduleKnown, appId }
+ * @param {{forceRefresh?: boolean}} [options] Bypass the short-lived result cache.
+ * @returns {Promise<Object|null|undefined>}
+ */
+export async function validateSessionToken({ forceRefresh = false } = {}) {
+  if (!SSO_ENABLED) return null;
+  const now = Date.now();
+  if (!forceRefresh && introspectCache.data && now - introspectCache.at < INTROSPECT_TTL_MS) {
+    return introspectCache.data;
+  }
+  if (introspectInFlight) return introspectInFlight;
+  introspectInFlight = fetchIntrospect();
+  return introspectInFlight;
+}
+
+/**
+ * Clear the cached introspection result (e.g. on logout).
+ */
+export function clearIntrospectCache() {
+  introspectGeneration += 1;
+  introspectCache = { at: 0, data: null };
+  introspectInFlight = null;
+}
+
+export async function extendSession() {
+  if (!SSO_ENABLED) throw new Error("SSO is disabled in local mode.");
+  if (introspectInFlight) await introspectInFlight;
+  const response = await fetch(RENEW_SESSION_URL, {
+    method: "POST",
+    credentials: "include",
+    headers: { Accept: "application/json" },
+    cache: "no-store",
+    signal: AbortSignal.timeout(15_000),
+  });
+  const payload = await response.json();
+  if (!response.ok) {
+    const error = new Error(payload?.error || "Unable to extend session. Please try again.");
+    error.status = response.status;
+    throw error;
+  }
+  if (!payload?.success || !Number.isFinite(payload.expiresAt) || payload.expiresAt <= Date.now()) {
+    throw new Error("Unable to confirm the new session expiry. Please try again.");
+  }
+  clearIntrospectCache();
+  return payload;
+}
+
+/**
+ * Get the current user's session data (verified via core).
  * @returns {Promise<Object|null>} Session payload or null
  */
 export async function getCurrentSession() {
@@ -116,21 +214,18 @@ export async function getCurrentSession() {
 // ── Module Access ──────────────────────────────────────────────────────────
 
 /**
- * Check if the current user has access to this module.
- * The module ID is read from NEXT_PUBLIC_MODULE_ID environment variable.
- *
+ * Check if the current user may open THIS deployment's module.
+ * The decision is core's: hasModuleAccess() asks /api/auth/introspect with this
+ * deployment's NEXT_PUBLIC_MODULE_KEY and returns core's verified
+ * authorizedForApp, which core resolved against its own app registry.
  * @returns {Promise<boolean>} True if user has access to this module
  */
 export async function hasModuleAccess() {
   const session = await validateSessionToken();
-  if (!session) return false;
-
-  if (!MODULE_ID) {
-    console.warn("NEXT_PUBLIC_MODULE_ID is not configured");
-    return false;
-  }
-
-  return session.modules.includes(MODULE_ID);
+  // Core decides authorization for THIS deployment's module_key and returns it
+  // as authorizedForApp. Never re-derive from appId/modules here — that would
+  // let a caller probe a different app.
+  return Boolean(session && session.authorizedForApp === true);
 }
 
 /**
@@ -143,9 +238,9 @@ export async function hasSpecificModuleAccess(moduleId) {
   if (!moduleId) return false;
 
   const session = await validateSessionToken();
-  if (!session) return false;
+  if (!session || !Array.isArray(session.modules)) return false;
 
-  return session.modules.includes(moduleId);
+  return session.modules.map(String).includes(String(moduleId));
 }
 
 // ── Logout ──────────────────────────────────────────────────────────────────
@@ -155,17 +250,18 @@ export async function hasSpecificModuleAccess(moduleId) {
  * Calls the logout endpoint to invalidate session in database and clear cookies.
  */
 export async function logout() {
-  try {
-    await fetch("/api/auth/logout", {
-      method: "POST",
-      credentials: "include",
-    });
-  } catch (error) {
-    console.error("SSO logout error:", error);
-  }
+  if (!SSO_ENABLED) return;
+  const response = await fetch((IS_MODULE ? INTROSPECT_CORE_URL : "") + "/api/auth/logout", {
+    method: "POST",
+    credentials: "include",
+    cache: "no-store",
+    signal: AbortSignal.timeout(15_000),
+  });
+  if (!response.ok) throw new Error("Unable to end your shared session. Please try again.");
 
-  // Also clear the client-side payload cookie immediately
+  // Also clear the client-side payload cookie + cached introspection immediately
   clearPSBUserPayloadCookie();
+  clearIntrospectCache();
 }
 
 // ── Navigation ──────────────────────────────────────────────────────────────
@@ -185,7 +281,7 @@ const ENV = process.env.NEXT_PUBLIC_ENV || "local";
 export function redirectToLogin(returnPath) {
   let loginUrl;
 
-  if (ENV === "prod") {
+  if (SSO_ENABLED && (IS_MODULE || ENV === "prod")) {
     // Production: use Core Portal SSO login
     loginUrl = new URL("/login", CORE_PORTAL_URL);
   } else {
@@ -196,7 +292,7 @@ export function redirectToLogin(returnPath) {
   if (returnPath) {
     const trimmed = String(returnPath || "").trim();
     if (trimmed) {
-      loginUrl.searchParams.set("redirect", trimmed);
+      loginUrl.searchParams.set("redirect", SSO_ENABLED && IS_MODULE ? new URL(trimmed, window.location.origin).href : trimmed);
     }
   }
 

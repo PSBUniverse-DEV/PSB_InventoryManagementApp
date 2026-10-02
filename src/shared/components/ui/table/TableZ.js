@@ -1,5 +1,4 @@
 "use client";
-
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { Form, Spinner, Table as BootstrapTable } from "react-bootstrap";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
@@ -37,7 +36,7 @@ import {
   toIntegerOrFallback,
 } from "@/shared/components/ui/table/tableUtils";
 
-const ACTION_COLUMN_WIDTH = 140;
+const SETUP_ACTION_COLUMN_WIDTH = 92;
 
 function normalizeSortDirection(direction) {
   return String(direction || "").toLowerCase() === "desc" ? "desc" : "asc";
@@ -201,6 +200,43 @@ function validateTableProps({
   });
 }
 
+/**
+ * Full-featured shared data table.
+ *
+ * UI anatomy, from top to bottom:
+ * 1. Page/Main Toolbar - parent-owned. Use it for page title, record count,
+ *    tabs, Add actions, or other page-level controls. TableZ does not render it.
+ * 2. Batch Toolbar - TableZ-owned and shown only for pending batch changes.
+ * 3. Filter Toolbar - TableZ-owned and shown when filterConfig has filters.
+ * 4. Search Toolbar - TableZ-owned unless hideSearch is true.
+ * 5. Table Surface - headers, sorting, resizing, rows, actions, drag handles,
+ *    loading, empty, and detail states.
+ * 6. Table Footer - TableZ-owned unless hideFooter is true; contains row count,
+ *    page-size selection, and pagination.
+ *
+ * TableZ owns table interaction state in uncontrolled mode. In controlled mode,
+ * pass state and onChange; the parent owns data fetching and state updates.
+ * Database access and mutations always remain in the parent module.
+ *
+ * The compact operational styling is the shared TableZ baseline. The optional
+ * variant prop is retained for compatibility, and variant="setup" is an alias
+ * for the same baseline rather than a separate visual system.
+ *
+ * @param {Object} props
+ * @param {Array<Object>} props.data Rows to render.
+ * @param {Array<Object>} props.columns Column definitions with key and label.
+ * @param {string} props.rowIdKey Unique row identity field; defaults to "id".
+ * @param {Array<Object>} props.actions Row action definitions.
+ * @param {boolean} props.draggable Enable drag-and-drop ordering.
+ * @param {Function} props.onReorder Receives the reordered rows.
+ * @param {Array<Object>} props.filterConfig Filter Toolbar definitions.
+ * @param {Object} props.state Controlled table state.
+ * @param {Function} props.onChange Controlled-mode event channel.
+ * @param {boolean} props.hideSearch Hide the Search Toolbar.
+ * @param {boolean} props.hideFooter Hide the Table Footer.
+ * @param {string} props.variant Compatibility/display hint, including "setup".
+ * @returns {JSX.Element} The complete TableZ surface.
+ */
 export default function TableZ({
   data = [],
   columns = [],
@@ -221,6 +257,7 @@ export default function TableZ({
   onHeaderContextMenu,
   loading = false,
   className = "",
+  variant = "",
   emptyMessage = "No records found.",
   loadingMessage = "Loading records...",
   searchPlaceholder = "Search",
@@ -234,9 +271,11 @@ export default function TableZ({
 }) {
   const tableId = useId();
   const controlledMode = isPlainObject(state) && typeof onChange === "function";
+  const variantClassName = variant ? `psb-ui-table--${variant}` : "";
+  const actionColumnWidth = SETUP_ACTION_COLUMN_WIDTH;
   const tableClassName = controlledMode
-    ? ["psb-ui-table", "psb-ui-data-table", className].filter(Boolean).join(" ")
-    : ["psb-ui-table", "psb-ui-data-table", "table-sm", "mb-0"].join(" ");
+    ? ["psb-ui-table", "psb-ui-data-table", "psb-ui-table--setup", variantClassName, className].filter(Boolean).join(" ")
+    : ["psb-ui-table", "psb-ui-data-table", "table-sm", "mb-0", "psb-ui-table--setup", variantClassName, className].filter(Boolean).join(" ");
 
   if (isDevEnvironment()) {
     validateTableProps({
@@ -889,8 +928,8 @@ export default function TableZ({
           <col
             className="psb-ui-table-actions-col"
             style={{
-              width: `${ACTION_COLUMN_WIDTH}px`,
-              minWidth: `${ACTION_COLUMN_WIDTH}px`,
+              width: `${actionColumnWidth}px`,
+              minWidth: `${actionColumnWidth}px`,
             }}
           />
         ) : null}
@@ -995,8 +1034,10 @@ export default function TableZ({
   );
 
   return (
-    <section className={["psb-ui-table-shell", className].filter(Boolean).join(" ")} aria-label="Data table">
+    <section className={["psb-ui-table-shell", "psb-ui-table--setup", variantClassName, className].filter(Boolean).join(" ")} aria-label="Data table">
+      {/* Batch Toolbar */}
       {batchControls}
+      {/* Filter Toolbar */}
       {hasFilterControls ? (
         <div className={`psb-ui-table-filters-shell${filtersExpanded ? " psb-ui-table-filters-shell--inline" : ""}`}>
           <button
@@ -1138,10 +1179,13 @@ export default function TableZ({
         </div>
       ) : null}
 
+      {/* Search Toolbar */}
       {hideSearch ? null : searchShell}
 
+      {/* Table Surface */}
       <div className="table-responsive">{tableWithDrag}</div>
 
+      {/* Table Footer */}
       {hideFooter ? null : (
       <div className="psb-ui-table-pagination">
         <div className="psb-ui-table-pagination-summary">

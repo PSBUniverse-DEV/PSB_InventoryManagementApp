@@ -372,7 +372,7 @@ This example uses Button, Card, StatusBadge, Modal, Input, and Toast — all fro
 
 ```
 User interacts with TableZ
-  → TableZ emits event (onSortChange, onFilterChange, etc.)
+  → TableZ emits an event through onChange (search, filters, sorting, pagination, etc.)
   → Module updates its state
   → Module fetches data via Server Action
   → Module passes updated data back to TableZ
@@ -395,6 +395,35 @@ User interacts with TableZ
 
 > **For example:** If you're building a simple list page and want the table to handle fetching, filtering, and pagination for you, use `TableX`. If you need full control over how data is loaded and transformed, use `TableZ`.
 
+### TableZ Anatomy
+
+TableZ is a complete table surface made up of several named regions. Use these names when discussing layout, styling, or integration work:
+
+| Region | Owned by | When it appears | Purpose |
+|--------|----------|-----------------|---------|
+| **Page/Main Toolbar** | Parent module or page | Optional | Holds the page title, record count, tabs, Add actions, or page-level controls. TableZ does not render this region. |
+| **Batch Toolbar** | TableZ | `batchMode={true}` with pending changes | Shows batch status and save/reset actions. |
+| **Filter Toolbar** | TableZ | `filterConfig` contains filters | Collapsible select, text, date, and date-range filters. |
+| **Search Toolbar** | TableZ | Unless `hideSearch={true}` | Debounced search using `searchPlaceholder`. |
+| **Table Surface** | TableZ | Always | Headers, sorting, resizing, row rendering, actions, drag handles, loading, empty, and detail states. |
+| **Table Footer** | TableZ | Unless `hideFooter={true}` | Row count, page size, and pagination controls. |
+
+The normal composition is:
+
+```text
+Page/Main Toolbar (parent-owned, optional)
+  TableZ
+    Batch Toolbar (optional)
+    Filter Toolbar (optional)
+    Search Toolbar (optional)
+    Table Surface
+    Table Footer (optional)
+```
+
+TableZ owns its interaction regions. The parent owns the page-level toolbar so it can coordinate the table with tabs, page navigation, Add actions, and other module controls. Use `hideSearch` or `hideFooter` when the parent provides an equivalent control or when rendering a nested table.
+
+The compact operational setup styling is the shared TableZ baseline. `variant="setup"` remains accepted for compatibility and documentation clarity, but it does not create a separate visual language.
+
 ---
 
 ## TableZ Props Reference
@@ -409,11 +438,11 @@ User interacts with TableZ
 | `onRowClick` | `function` | -- | Callback fired when a row is clicked: `(row) => void` |
 | `draggable` | `boolean` | `false` | Enable drag-and-drop row reordering |
 | `onReorder` | `function` | -- | Callback fired after reorder: `(newOrderedData) => void` |
-| `hideSearch` | `boolean` | `false` | Hides the search input bar |
+| `hideSearch` | `boolean` | `false` | Hides the Search Toolbar. Use when the parent provides search or for nested tables. |
 | `hideFooter` | `boolean` | `false` | Hides the table footer (pagination/row count) |
+| `variant` | `string` | `""` | Compatibility/display hint. `"setup"` is accepted; all TableZ instances use the shared compact visual baseline. |
 | `renderDetail` | `function` | -- | Renders an expandable detail panel below the selected row: `(row) => ReactNode` |
-| `onSortChange` | `function` | -- | Sort event callback |
-| `onFilterChange` | `function` | -- | Filter event callback |
+| `onChange` | `function` | -- | Controlled-mode event channel for search, filters, sorting, pagination, actions, export, visibility, and resize events |
 
 ### Master-Detail Pattern
 
@@ -820,3 +849,52 @@ Core includes wrapper components under `src/shared/components/ui`:
 - Reduce visual divergence between modules.
 
 **Migration note:** Legacy direct React-Bootstrap usage can remain during incremental migration. New code should use the shared wrappers.
+
+---
+
+## File Attachments
+
+Core provides one way to attach files to any record. Use it instead of building a module-local uploader.
+
+| Piece | Where | Owner |
+|---|---|---|
+| Storage service (signed upload, signed view link, delete, type/size checks) | `src/core/storage/files.service.js` | Core |
+| UI (list, add, open, delete) | `FileAttachments` from `@/shared/components/ui` | Core |
+| Which record a file belongs to (your file table) | Your module | Module |
+
+**Rules**
+
+1. The service functions are server-only and are NOT server actions. Call them from your module's own server actions, after your own checks.
+2. Files never go through a server action. The browser uploads straight to Supabase Storage using the one-time target from `createSignedFileUpload()`.
+3. Your module chooses the bucket and the folder (for example `projects/42`) and stores `storage_path` in its own table.
+4. When you delete a record, call `removeStoredFiles()` for its files first.
+
+**Module server actions (example)**
+
+```js
+"use server";
+import { createSignedFileUpload, getSignedFileUrl, removeStoredFiles } from "@/core/storage/files.service";
+
+const BUCKET = "my-bucket";
+
+export async function createInvoiceFileUpload(invoiceId, file) {
+  return createSignedFileUpload({ bucket: BUCKET, folder: `invoices/${invoiceId}`, file });
+}
+```
+
+**Module UI (example)**
+
+```jsx
+import { FileAttachments } from "@/shared/components/ui";
+
+<FileAttachments
+  key={invoice.id}
+  loadFiles={() => loadInvoiceFiles(invoice.id)}
+  createUpload={(meta) => createInvoiceFileUpload(invoice.id, meta)}
+  saveFile={(storagePath, meta) => saveInvoiceFile(invoice.id, storagePath, meta)}
+  getFileUrl={(file) => getInvoiceFileUrl(file.id)}
+  deleteFile={(file) => deleteInvoiceFile(file.id)}
+/>
+```
+
+Rows returned by `loadFiles` and `saveFile` need `id`, `file_name` and `file_size`. Defaults: images and PDF, 10 MB. Pass `accept` and `maxBytes` to the component, and `allowedTypes` and `maxBytes` to the service, to change them — always change both sides together.

@@ -81,6 +81,7 @@ function hasOwn(source, key) { return Object.prototype.hasOwnProperty.call(sourc
 
 export function createEmptyForm(defaultStatusId = null, statuses = []) {
   return {
+    employee_id: "",
     username: "", first_name: "", middle_name: "", last_name: "",
     email: "", phone: "", address: "",
     comp_id: null, dept_id: null, position: "", hire_date: "",
@@ -93,6 +94,7 @@ export function createEmptyForm(defaultStatusId = null, statuses = []) {
 export function createFormFromUser(user, fallbackStatusId, statuses) {
   const statusId = user?.status_id ?? fallbackStatusId ?? null;
   return {
+    employee_id: normalizeText(user?.employee_id),
     username: normalizeText(user?.username), first_name: normalizeText(user?.first_name),
     middle_name: normalizeText(user?.middle_name), last_name: normalizeText(user?.last_name),
     email: normalizeText(user?.email), phone: normalizeText(user?.phone),
@@ -119,6 +121,7 @@ export function summarizeUserRow(form, lookups, previousRow = {}) {
   return {
     ...previousRow,
     id: previousRow?.id ?? previousRow?.user_id, user_id: previousRow?.user_id ?? previousRow?.id,
+    employee_id: normalizeText(form?.employee_id) || "--",
     username: normalizeText(form?.username) || "--",
     full_name: fullName, display_name: fullName,
     email: normalizeText(form?.email) || "--",

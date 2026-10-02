@@ -12,7 +12,25 @@ const ALLOWED_HOST_SUFFIXES = [
   ".vercel.app", // All Vercel deployments (dev, preview, CI, etc.)
 ];
 
+const LOGIN_PATHS = ["/login", "/psbpages/login"];
+
 // ── Public API ──────────────────────────────────────────────
+
+/**
+ * Check whether a pathname is a login page (public or internal route).
+ * Used to stop post-login redirects from looping back to the login page.
+ *
+ * "/login" is a rewrite of the real page at "/psbpages/login"
+ * (see src/app/rewrites.json), but both URLs work in the browser,
+ * so both must be treated as login pages.
+ *
+ * @param {string} pathname - URL pathname (e.g. "/login", "/psbpages/login/")
+ * @returns {boolean} True if the path is a login page
+ */
+export function isLoginPath(pathname) {
+  const path = String(pathname || "");
+  return LOGIN_PATHS.some((loginPath) => path === loginPath || path.startsWith(`${loginPath}/`));
+}
 
 /**
  * Validate a redirect URL to prevent open redirect vulnerabilities.
@@ -36,9 +54,16 @@ export function validateRedirectUrl(redirectUrl, fallbackUrl = "/dashboard") {
 
   const trimmed = redirectUrl.trim();
 
-  // Allow relative paths (e.g., "/dashboard", "/gutter/dashboard")
+  // Allow relative paths (e.g., "/dashboard", "/gutter/dashboard"), except login pages
   if (trimmed.startsWith("/")) {
-    return trimmed;
+    if (trimmed.startsWith("//")) return fallbackUrl;
+    try {
+      const relativeUrl = new URL(trimmed, "http://localhost");
+      if (relativeUrl.origin !== "http://localhost") return fallbackUrl;
+      return isLoginPath(relativeUrl.pathname) ? fallbackUrl : trimmed;
+    } catch {
+      return fallbackUrl;
+    }
   }
 
   // Only allow HTTP/HTTPS
@@ -48,6 +73,11 @@ export function validateRedirectUrl(redirectUrl, fallbackUrl = "/dashboard") {
 
   try {
     const url = new URL(trimmed);
+
+    // Never redirect back to a login page (prevents post-login loops)
+    if (isLoginPath(url.pathname)) {
+      return fallbackUrl;
+    }
 
     // Allow localhost on any port (for local development)
     if (url.hostname === "localhost") {
@@ -59,7 +89,7 @@ export function validateRedirectUrl(redirectUrl, fallbackUrl = "/dashboard") {
       url.host.endsWith(suffix),
     );
 
-    if (isAllowedSuffix) {
+    if (isAllowedSuffix || url.hostname === "psbuniverse.com") {
       return trimmed;
     }
 

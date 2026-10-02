@@ -64,6 +64,12 @@ const TABLE_SOURCE_ROWS = [
   { id: 5, employee_code: "EMP-1105", full_name: "Taylor Lopez",   email: "taylor.lopez@psbuniverse.local",   team: "Support",    role: "manager", status: "active",    created_at: "2026-02-28" },
   { id: 6, employee_code: "EMP-1106", full_name: "Casey Johnson",  email: "casey.johnson@psbuniverse.local",  team: "Audit",      role: "analyst", status: "pending",   created_at: "2026-02-21" },
 ];
+const SETUP_TABLE_ROWS = [
+  { status_id: "run-queued", status_name: "Queued", status_description: "Waiting to start", display_color: "#64748B", display_order: 10, is_active: true },
+  { status_id: "run-active", status_name: "In Progress", status_description: "Currently running", display_color: "#2563EB", display_order: 20, is_active: true },
+  { status_id: "run-complete", status_name: "Complete", status_description: "Finished successfully", display_color: "#16A34A", display_order: 30, is_active: true },
+  { status_id: "run-paused", status_name: "Paused", status_description: "Temporarily stopped", display_color: "#D97706", display_order: 40, is_active: false },
+];
 
 // ---------------------------------------------------------------------------
 // Snippets
@@ -79,6 +85,7 @@ const SNIPPET_TABLE_BASIC = `import { TableZ } from "@/shared/components/ui";
   state={tableState}
   filterConfig={filterConfig}
   actions={actions}
+  variant="setup"
   loading={loading}
   onChange={handleTableChange}
 />`;
@@ -1575,6 +1582,7 @@ function PlaygroundTab() {
   const [toastCount,     setToastCount]     = useState(0);
   const [cardModalOpen,  setCardModalOpen]  = useState(false);
   const [copiedIcon,     setCopiedIcon]     = useState(null);
+  const [setupRows,      setSetupRows]      = useState(SETUP_TABLE_ROWS);
 
   const tableColumns = useMemo(() => [
     { key: "employee_code", label: "Code",    sortable: true, width: 130 },
@@ -1613,6 +1621,42 @@ function PlaygroundTab() {
       onClick: (row) => toastWarning(`Deactivated: ${row.full_name}`, "Row Action"),
     },
   ], []);
+
+  const setupColumns = useMemo(() => [
+    { key: "status_name", label: "Status Name", sortable: true, width: 150 },
+    { key: "status_description", label: "Description", sortable: true, width: 220 },
+    {
+      key: "display_color", label: "Color", width: 130,
+      render: (row) => (
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 7 }}>
+          <span aria-hidden="true" style={{ width: 12, height: 12, borderRadius: 3, background: row.display_color, border: "1px solid rgba(0,0,0,.15)" }} />
+          <code>{row.display_color}</code>
+        </span>
+      ),
+    },
+    { key: "display_order", label: "Order", sortable: true, width: 90 },
+    {
+      key: "is_active", label: "Active", sortable: true, width: 100,
+      render: (row) => <StatusBadge status={row.is_active ? "active" : "inactive"} />,
+    },
+  ], []);
+
+  const setupActions = useMemo(() => [
+    {
+      key: "edit", label: "Edit", type: "secondary", icon: "pen",
+      onClick: (row) => toastSuccess(`Edit: ${row.status_name}`, "Setup Table"),
+    },
+    {
+      key: "deactivate", label: "Deactivate", type: "secondary", icon: "ban",
+      visible: (row) => row.is_active,
+      onClick: (row) => setSetupRows((previous) => previous.map((item) => item.status_id === row.status_id ? { ...item, is_active: false } : item)),
+    },
+  ], []);
+
+  const handleSetupReorder = useCallback((nextRows) => {
+    setSetupRows(nextRows.map((row, index) => ({ ...row, display_order: (index + 1) * 10 })));
+    toastSuccess("Display order updated.", "Setup Table");
+  }, []);
 
   const selectedStatusLabels = useMemo(() => {
     const selectedItems = multiDropdownValues
@@ -2515,6 +2559,7 @@ const handleSave = async () => {
             state={tableViewState}
             filterConfig={filterConfig}
             actions={actions}
+            variant="setup"
             loading={false}
             pageSizeOptions={[5, 10, 20]}
             searchPlaceholder="Search code, name, team, role, status"
@@ -2556,8 +2601,41 @@ const actions = [
   state={tableState}
   filterConfig={filterConfig}
   actions={actions}
+  variant="setup"
   loading={loading}
   onChange={handleTableChange}
+/>`} />
+        </div>
+      ),
+    },
+    {
+      key: "play-table-setup",
+      title: "12. TableZ Setup Variant (compact ordered lookup)",
+      content: (
+        <div className={styles.playBody}>
+          <p className={styles.playLabel}>Opt-in setup styling for dense admin tables with custom identity, rendered cells, actions, and reorderable rows.</p>
+          <TableZ
+            data={setupRows}
+            columns={setupColumns}
+            rowIdKey="status_id"
+            actions={setupActions}
+            draggable
+            onReorder={handleSetupReorder}
+            variant="setup"
+            pageSizeOptions={[5, 10]}
+            searchPlaceholder="Search run statuses..."
+            emptyMessage="No run statuses found."
+          />
+          <Snippet title="Setup variant" code={`import { TableZ } from "@/shared/components/ui";
+
+<TableZ
+  data={runStatuses}
+  columns={columns}
+  rowIdKey="status_id"
+  actions={actions}
+  draggable
+  onReorder={handleReorder}
+  variant="setup"
 />`} />
         </div>
       ),
@@ -3968,6 +4046,12 @@ function TableZTab() {
           TableZ is the full engine. Use it when you need complete control â€” server-side state,
           drag-and-drop, batch editing, master-detail, or custom rendering.
           For simple tables, use TableX instead.
+        </p>
+        <p className={styles.stepNote}>
+          Anatomy: the parent-owned <strong>Page/Main Toolbar</strong>, followed by optional
+          <strong> Batch Toolbar</strong>, <strong>Filter Toolbar</strong>, <strong>Search Toolbar</strong>,
+          the <strong>Table Surface</strong>, and optional <strong>Table Footer</strong>.
+          Use <code>hideSearch</code> or <code>hideFooter</code> when the parent or a nested table provides those controls.
         </p>
       </div>
 

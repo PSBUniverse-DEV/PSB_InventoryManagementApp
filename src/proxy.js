@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { isLoginPath } from "@/core/auth/redirect-validator";
+import { SSO_ENABLED } from "@/core/sso-client";
 
 /**
  * SSO Proxy Middleware for PSBUniverse
@@ -20,7 +22,7 @@ export function proxy(req) {
 
   // ── Bypass routes ────────────────────────────────────────────────────
   // Allow login page and API routes
-  const isLoginPage = pathname === "/login" || pathname.startsWith("/login/");
+  const isLoginPage = isLoginPath(pathname);
   const isApiRoute = pathname.startsWith("/api/");
   const isPublicAsset = pathname.includes("_next") || pathname === "/favicon.ico";
 
@@ -30,7 +32,7 @@ export function proxy(req) {
 
   // ── Check for SSO session token ────────────────────────────────────────
   // First check new SSO cookie (psb_session)
-  let token = String(req.cookies.get("psb_session")?.value || "").trim();
+  let token = SSO_ENABLED ? String(req.cookies.get("psb_session")?.value || "").trim() : "";
 
   // Fallback to legacy Supabase token if SSO token not found
   if (!token) {
@@ -54,7 +56,7 @@ export function proxy(req) {
   const response = NextResponse.next();
   
   // Add security headers for SSO system
-  response.headers.set("X-SSO-Enabled", "true");
+  response.headers.set("X-SSO-Enabled", String(SSO_ENABLED));
   
   return response;
 }
