@@ -1,5 +1,27 @@
 # Changelog
 
+## 2026-10-08 Server Session In Local And Dev
+
+- `getCurrentSession()` now resolves the signed-in user from the Supabase `sb-access-token` cookie when SSO is off (`local`, `dev`). Prod still reads and verifies `psb_session`.
+- Fixes a login redirect loop in modules whose server code identifies the user through `getCurrentSession()` (e.g. Time Tracker) after SSO was limited to prod.
+
+---
+
+## 2026-10-08 SSO Limited To Prod
+
+- SSO is now enabled only for `NEXT_PUBLIC_ENV=prod`. `dev` behaves like `local`: per-app Supabase login and bootstrap roles, with no introspection, renewal, shared logout, or cross-app redirects.
+- Reason: dev deployments run on `*.vercel.app`, where the shared session cookie and core's auth CORS rules cannot apply.
+
+---
+
+## 2026-10-03 Explicit Logout Redirect Priority
+
+- Navbar logout now navigates to the clean `https://psbuniverse.com/` URL, without a module return parameter.
+- Explicit logout pauses automatic auth-loss redirects and invalidates pending session checks so they cannot override that destination. A failed logout restores normal handling for retry.
+- Added a regression for logout overlapping with session loss. Local mode retains its local login destination.
+
+---
+
 ## 2026-10-03 Global Navbar Logout
 
 - Hosted navbar logout calls core's logout endpoint from every module and returns to the configured portal root. Local mode keeps local-only logout.

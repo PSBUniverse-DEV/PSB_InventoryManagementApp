@@ -18,10 +18,12 @@ no numeric ids and no auth secrets — they ask core.
 
 ## Module Startup And Login
 
-SSO runs only when `NEXT_PUBLIC_ENV` is `dev` or `prod`. With `local` (or an
+SSO runs only when `NEXT_PUBLIC_ENV` is `prod`. With `local`, `dev` (or an
 unset environment), the shell uses local Supabase login and bootstrap roles: no
 SSO login/logout requests, introspection, renewal, or SSO expiry timers run.
-Local module access uses the `appId` prop and existing `hasAppAccess` role checks.
+Module access then uses the `appId` prop and existing `hasAppAccess` role checks.
+Dev is excluded because its apps run on `*.vercel.app` hosts, which cannot share
+the `.psbuniverse.com` session cookie; each dev app signs in on its own.
 
 A modular app is a separate deployment of the shared shell, not a separate required
 sign-in in dev/prod. When `NEXT_PUBLIC_MODULE_KEY` is set to a non-core key, `AuthProvider`
@@ -76,8 +78,9 @@ In dev/prod, the navbar logout sends a credentialed request to core's
 `/api/auth/logout`, even when clicked in a modular app. Core invalidates the
 current SSO session and expires `psb_session` and `psb_user_payload` for
 `.psbuniverse.com`, as well as legacy host-only copies and its access-token cookie.
-The clicked app clears local Supabase auth and redirects to the configured core
-portal root. Hosted core will not restore authentication from a leftover local
+The clicked app clears local Supabase auth and redirects to `https://psbuniverse.com/`
+without a module return parameter. Explicit logout suppresses automatic session-loss
+redirects so they cannot send the visitor back to the module. Hosted core will not restore authentication from a leftover local
 Supabase session when the shared SSO session is missing.
 
 Other open apps clear their auth state on their next session check (normally
@@ -155,8 +158,17 @@ Module `module_key` slugs: `project-map`, `time-tracker`, `gutter-app`,
 
 - **`psb_s_application.module_key`** — unique, non-null slug per app; a module's
   `NEXT_PUBLIC_MODULE_KEY` must equal it, and the row must be `is_active = true`.
-- **Card `route_path`** (Card Module Setup) — point at the real subdomain
-  (`https://timesheets.psbuniverse.com/…`), never a `vercel.app` URL.
+- **Application URLs** (Application Setup) — for an app on its own subdomain,
+  set `dev_url` and `prod_url` to the site address only
+  (`https://dev-timesheets.vercel.app`, `https://timesheets.psbuniverse.com`).
+  Leave both blank for apps served by core.
+- **Card `route_path`** (Card Module Setup) — for a page inside core, a plain
+  path (`/admin/status-setup`). For another app, `module:<module_key>/<path>`
+  (`module:time-tracker/time-tracker`): the dashboard looks the application up
+  by `module_key` and uses its `prod_url` in prod and its `dev_url` in dev and
+  local. If that application has no URL for the environment, or the key is
+  unknown, the card is shown but not clickable. Avoid hard-coded full URLs:
+  every environment shares the same card rows.
 - **User access** — a user reaches a module only with an active
   `psb_m_userapproleaccess` row for that `app_id` (User Master Setup).
 - **Hosting** — core and every module on `*.psbuniverse.com` over HTTPS.

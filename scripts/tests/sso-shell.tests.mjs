@@ -173,7 +173,7 @@ test("a check started before sign-in cannot reject the newly established session
 async function createLayout(auth, pathname = "/login", search = "", ssoEnabled = true, logoutError = null) {
   const runtime = createHooks(), browser = createBrowser(pathname, search);
   const errors = [];
-  const counts = { ssoLogout: 0, localLogout: 0 };
+  const counts = { ssoLogout: 0, localLogout: 0, beginLogout: 0, cancelLogout: 0 };
   const router = { replace: (target) => browser.redirects.push(target) };
   const exports = await loadComponent("src/shared/components/layout/AppLayout.js", {
     react: runtime.hooks, "react/jsx-runtime": jsxRuntime,
@@ -181,16 +181,21 @@ async function createLayout(auth, pathname = "/login", search = "", ssoEnabled =
     "react-bootstrap": { Spinner: "Spinner" },
     "@/shared/components/ui/controls/Button": defaultExport("Button"),
     "@/shared/components/layout/Header": defaultExport("Header"),
-    "@/core/auth/useAuth": { useAuth: () => ({ dbUser: null, roles: [], ...auth }) },
+    "@/core/auth/useAuth": { useAuth: () => ({ dbUser: null, roles: [], beginLogout: () => { counts.beginLogout++; }, cancelLogout: () => { counts.cancelLogout++; }, ...auth }) },
     "@/core/supabase/client": { getSupabase: () => ({ auth: { signOut: async () => { counts.localLogout++; } } }) },
     "@/shared/utils/toast": { toastError: (message) => errors.push(message) },
     "@/shared/utils/navbar-loader": { NAVBAR_LOADER_FINISH_EVENT: "finish", NAVBAR_LOADER_START_EVENT: "start" },
-    "@/core/sso-client": { SSO_ENABLED: ssoEnabled, IS_MODULE: true, logout: async () => { counts.ssoLogout++; if (logoutError) throw logoutError; }, redirectToLogin: (target) => browser.redirects.push(target) },
+    "@/core/sso-client": { SSO_ENABLED: ssoEnabled, IS_MODULE: true, logout: async () => { counts.ssoLogout++; if (typeof logoutError === "function") await logoutError(); else if (logoutError) throw logoutError; }, redirectToLogin: (target) => browser.redirects.push(target) },
     "@/core/auth/redirect-validator": { isLoginPath, validateRedirectUrl },
   }, { ...browser, process: { env: { NEXT_PUBLIC_ENV: "prod" } } });
   const tree = runtime.render(() => exports.default({ children: "credentials-form" }));
   runtime.effects.forEach((effect) => effect());
-  return { ...browser, tree, errors, counts };
+  return { ...browser, tree, errors, counts, rerender() {
+    runtime.effects.length = 0;
+    const nextTree = runtime.render(() => exports.default({ children: "credentials-form" }));
+    runtime.effects.forEach((effect) => effect());
+    return nextTree;
+  } };
 }
 
 test("module login never shows credentials during verification and returns authenticated users locally", async () => {
@@ -317,7 +322,7 @@ async function createLogin(postOk, session, ssoEnabled = true) {
     "next/image": defaultExport("Image"), "next/navigation": { useRouter: () => ({ replace() {} }), useSearchParams: () => ({ get: () => null }) },
     "react-bootstrap": { Button: "Button", Form: "Form" },
     "@fortawesome/react-fontawesome": { FontAwesomeIcon: "Icon" }, "@fortawesome/free-solid-svg-icons": { faEye: {}, faEyeSlash: {} },
-    "@/styles/psb_logo.png": defaultExport("logo"),
+    "@/styles/psbuniverse_icon.svg": defaultExport("logo"),
     "@/core/supabase/client": { getSupabase: () => ({ auth: { signInWithPassword: async () => ({ data: { session: { access_token: "test-token" } } }) } }) },
     "@/core/auth/useAuth": { useAuth: () => ({ authUser: null }) },
     "@/shared/utils/toast": { toastError: (message) => errors.push(message), toastSuccess: (message) => successes.push(message) },
@@ -367,7 +372,7 @@ test("local mode uses Supabase auth and its login form without any SSO checks or
   assert.equal(login.ssoCalls, 0);
 });
 
-test("SSO clients run only in dev or prod and do no network work in local", async () => {
+test("SSO clients run only in prod and do no network work in local or dev", async () => {
   for (const environment of ["local", "dev", "prod"]) {
     let requests = 0;
     const browser = createBrowser("/login", "");
@@ -376,9 +381,9 @@ test("SSO clients run only in dev or prod and do no network work in local", asyn
       process: { env: { NEXT_PUBLIC_ENV: environment, NEXT_PUBLIC_MODULE_KEY: "time-tracker" } },
       fetch: async () => { requests++; return { ok: true, json: async () => ({ ...validSession(), authenticated: true }) }; },
     });
-    assert.equal(client.SSO_ENABLED, environment !== "local");
+    assert.equal(client.SSO_ENABLED, environment === "prod");
     const session = await client.validateSessionToken();
-    if (environment === "local") {
+    if (environment !== "prod") {
       assert.equal(session, null);
       await client.logout();
       await assert.rejects(client.extendSession(), /SSO is disabled/);
@@ -429,12 +434,42 @@ test("navbar logout returns hosted users to the portal root and keeps local logo
     await header.props.onLogout();
     assert.equal(layout.counts.ssoLogout, enabled ? 1 : 0);
     assert.equal(layout.counts.localLogout, 1);
-    assert.deepEqual(layout.redirects, [enabled ? "https://www.psbuniverse.com/" : "/login"]);
+    assert.deepEqual(layout.redirects, [enabled ? "https://psbuniverse.com/" : "/login"]);
+    assert.equal(layout.counts.beginLogout, 1);
   }
   const failed = await createLayout({ loading: false, authUser: { id: 1 } }, "/time-tracker", "", true, new Error("Core unavailable"));
   await failed.tree.props.children[0].props.onLogout();
   assert.equal(failed.redirects.length, 0);
   assert.equal(failed.errors.length, 1);
+  assert.equal(failed.counts.cancelLogout, 1);
+});
+
+test("explicit logout cannot be overridden by automatic module return redirects", async () => {
+  const provider = await createProvider(true, validSession());
+  let resolveCheck;
+  provider.setSession(new Promise((resolve) => { resolveCheck = resolve; }));
+  await provider.poll();
+  provider.context().beginLogout();
+  provider.event("SIGNED_OUT");
+  resolveCheck(null);
+  await flush(); await provider.immediate();
+  assert.equal(provider.redirects.length, 0);
+  provider.context().cancelLogout();
+  provider.setSession(null); await provider.poll(); await provider.immediate();
+  assert.equal(provider.redirects.length, 1);
+  provider.cleanup();
+
+  let finishLogout;
+  const auth = { loading: false, authUser: { id: 1 } };
+  const layout = await createLayout(auth, "/time-tracker", "", true,
+    () => new Promise((resolve) => { finishLogout = resolve; }));
+  const logout = layout.tree.props.children[0].props.onLogout();
+  auth.authUser = null;
+  layout.rerender();
+  assert.equal(layout.redirects.length, 0);
+  finishLogout(); await logout;
+  layout.rerender();
+  assert.deepEqual(layout.redirects, ["https://psbuniverse.com/"]);
 });
 
 test("module logout calls core with credentials and reports rejected logout", async () => {
