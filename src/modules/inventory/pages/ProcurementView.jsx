@@ -1189,7 +1189,13 @@ export default function ProcurementView({ initialData, hideSidebar = false, onNa
         {/* ── KPI Cards ───────────────────────────────────── */}
         <section className="proc-section">
           <div className="proc-kpi-grid">
-            <article className="proc-kpi-card">
+            <article
+              className="proc-kpi-card proc-kpi-card--clickable"
+              onClick={() => onNavigate ? onNavigate("purchaseRequests") : router.push("/inventory/purchase-requests")}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onNavigate ? onNavigate("purchaseRequests") : router.push("/inventory/purchase-requests"); } }}
+            >
               <div className="proc-kpi-label">Purchase Requests</div>
               <div className="proc-kpi-value">{kpiPurchaseRequests}</div>
               <div className="proc-kpi-meta">Current period</div>
@@ -1199,7 +1205,13 @@ export default function ProcurementView({ initialData, hideSidebar = false, onNa
               <div className="proc-kpi-value">{kpiPendingApproval}</div>
               <div className="proc-kpi-meta">Requires attention</div>
             </article>
-            <article className="proc-kpi-card proc-kpi-card--success">
+            <article
+              className="proc-kpi-card proc-kpi-card--success proc-kpi-card--clickable"
+              onClick={() => onNavigate ? onNavigate("purchaseOrders") : router.push("/inventory/purchase-orders")}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onNavigate ? onNavigate("purchaseOrders") : router.push("/inventory/purchase-orders"); } }}
+            >
               <div className="proc-kpi-label">Active Purchase Orders</div>
               <div className="proc-kpi-value">{kpiActivePurchaseOrders}</div>
               <div className="proc-kpi-meta">Current active orders</div>
@@ -1689,6 +1701,19 @@ export default function ProcurementView({ initialData, hideSidebar = false, onNa
           }
           .proc-kpi-card--warning::before { background: var(--proc-warning); }
           .proc-kpi-card--success::before { background: var(--proc-success); }
+          .proc-kpi-card--clickable {
+            cursor: pointer;
+            transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+          }
+          .proc-kpi-card--clickable:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--proc-shadow-md);
+            border-color: var(--proc-primary);
+          }
+          .proc-kpi-card--clickable:focus-visible {
+            outline: 2px solid var(--proc-primary);
+            outline-offset: 2px;
+          }
           .proc-kpi-label {
             margin-left: 7px;
             color: var(--proc-text-secondary);

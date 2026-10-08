@@ -40,6 +40,15 @@ function displayValue(value) {
   return value;
 }
 
+function formatDate(val) {
+  if (!val) return "—";
+  try {
+    return new Date(val).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  } catch {
+    return "—";
+  }
+}
+
 const EDITABLE_STATUSES = new Set(["saved", "recalled", "returned"]);
 const RECALLABLE_STATUSES = new Set(["pending approval", "pending for approval"]);
 
@@ -126,7 +135,7 @@ export default function PurchaseOrderListView({ initialData, onNavigate, onCreat
     () => [
       { key: "po_no", label: "PO Number", sortable: true, render: (row) => <span className="fw-semibold">{row.po_no || row.id}</span> },
       { key: "supplierName", label: "Supplier", sortable: true },
-      { key: "po_date", label: "Date", sortable: true, render: (row) => displayValue(row.po_date || row.created_at) },
+{ key: "po_date", label: "Date", sortable: true, render: (row) => formatDate(row.po_date || row.created_at) },
       { key: "delivery_date", label: "Delivery Date", sortable: true, render: (row) => displayValue(row.delivery_date) },
       { key: "payment_terms", label: "Payment Terms", sortable: true, render: (row) => displayValue(row.payment_terms) },
       { key: "est_total_cost", label: "Amount", sortable: true, align: "right", render: (row) => <span className="inventory-mono fw-semibold">{formatCurrency(row.est_total_cost)}</span> },

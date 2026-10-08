@@ -143,7 +143,7 @@ export function printPurchaseOrder(po, lineItems = [], options = {}) {
   <table class="items-table">
     <thead>
       <tr>
-        <th style="width:8%;">Item #</th>
+        <th style="width:8 %;">No</th>
         <th class="desc-col" style="width:38%;">Description</th>
         <th style="width:10%;">Qty</th>
         <th style="width:13%;">Unit</th>

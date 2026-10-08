@@ -574,6 +574,55 @@ export async function resolveStatusIdByName(name) {
 
 //#endregion
 
+//#region ─── WORKFLOW INSTANCE ──────────────────────────────────────
+
+/**
+ * Resolve the workflow, stage, status, and app data needed to create a
+ * workflow instance for a purchase request submission.
+ *
+ * Uses the v_wfk_stageparticipant view to find the "Purchase Request
+ * Approval" workflow and its first stage, then looks up the "Pending
+ * Approval" status in wfk_s_status.
+ */
+async function resolveWorkflowInstanceData(supabase) {
+  // 1. Resolve app_id from psb_s_application
+  const { data: app } = await supabase
+    .from("psb_s_application")
+    .select("app_id")
+    .eq("module_key", "inventory")
+    .eq("is_active", true)
+    .maybeSingle();
+
+  const appId = app?.app_id;
+
+  // 2. Query the view to get workflow and first stage info
+  const { data: stageData } = await supabase
+    .from("v_wfk_stageparticipant")
+    .select("workflow_id, workflow_stage_id, stage_order")
+    .eq("module_key", "inventory")
+    .eq("wf_name", "Purchase Request Approval")
+    .eq("workflow_is_active", true)
+    .eq("stage_is_active", true)
+    .order("stage_order", { ascending: true })
+    .limit(1);
+
+  const wfId = stageData?.[0]?.workflow_id;
+  const firstWfsId = stageData?.[0]?.workflow_stage_id;
+
+  // 3. Resolve "Pending Approval" status from wfk_s_status
+  const { data: wfStatus } = await supabase
+    .from("wfk_s_status")
+    .select("status_id")
+    .ilike("status_name", "Pending Approval")
+    .maybeSingle();
+
+  const statusId = wfStatus?.status_id;
+
+  return { appId, wfId, firstWfsId, statusId };
+}
+
+//#endregion
+
 //#region ─── PURCHASE REQUESTS ─────────────────────────────────────
 
 /**
@@ -731,6 +780,26 @@ export async function createPurchaseRequestAction(payload) {
     }
   }
 
+  // 3. Create workflow instance for non-draft submissions
+  if (!payload?.isDraft) {
+    try {
+      const { appId, wfId, firstWfsId, statusId } = await resolveWorkflowInstanceData(supabase);
+      if (appId && wfId && firstWfsId && statusId) {
+        await supabase.from("wfk_t_workflowinstance").insert([{
+          app_id: appId,
+          wf_id: wfId,
+          status_id: statusId,
+          current_wfs_id: firstWfsId,
+          document_id: prId,
+          started_at: new Date().toISOString(),
+          created_by: payload?.requestorId || null,
+        }]);
+      }
+    } catch (err) {
+      console.warn("[createPurchaseRequestAction] Workflow instance creation failed:", err.message);
+    }
+  }
+
   return header;
 }
 
@@ -802,6 +871,35 @@ export async function updatePurchaseRequestAction(prId, payload) {
     if (itemsError) throw new Error(`Failed to update purchase request items: ${itemsError.message}`);
   }
 
+  // 3. Create workflow instance for non-draft submissions (draft → submit transition)
+  if (!payload?.isDraft) {
+    try {
+      // Check if a workflow instance already exists for this PR
+      const { data: existing } = await supabase
+        .from("wfk_t_workflowinstance")
+        .select("instance_id")
+        .eq("document_id", prId)
+        .maybeSingle();
+
+      if (!existing) {
+        const { appId, wfId, firstWfsId, statusId } = await resolveWorkflowInstanceData(supabase);
+        if (appId && wfId && firstWfsId && statusId) {
+          await supabase.from("wfk_t_workflowinstance").insert([{
+            app_id: appId,
+            wf_id: wfId,
+            status_id: statusId,
+            current_wfs_id: firstWfsId,
+            document_id: prId,
+            started_at: new Date().toISOString(),
+            created_by: payload?.requestorId || null,
+          }]);
+        }
+      }
+    } catch (err) {
+      console.warn("[updatePurchaseRequestAction] Workflow instance creation failed:", err.message);
+    }
+  }
+
   return header;
 }
 
@@ -831,7 +929,7 @@ export async function createPurchaseOrderAction(payload) {
   if (payload?.isDraft && !statusId) {
     statusId = (await resolveStatusIdByName("Saved")) ?? (await resolveStatusIdByName("Pending Approval"));
   } else if (!payload?.isDraft && !statusId) {
-    statusId = await resolveStatusIdByName("Pending Approval");
+    statusId = await resolveStatusIdByName("Open");
   }
 
   // 1. Insert header
@@ -892,7 +990,7 @@ export async function updatePurchaseOrderAction(poId, payload) {
   if (payload?.isDraft) {
     statusId = (await resolveStatusIdByName("Saved")) ?? (await resolveStatusIdByName("Pending Approval"));
   } else {
-    statusId = await resolveStatusIdByName("Pending Approval");
+    statusId = await resolveStatusIdByName("Open");
   }
 
   // 1. Update header
@@ -1158,11 +1256,43 @@ export async function actOnPurchaseRequestApprovalAction({
 export async function saveProjectBomAction(payload) {
   const supabase = getSupabaseAdmin();
 
+  // 0. Insert customer snapshot into inv_t_projects (if customer data provided)
+  let projectId = payload?.projectId || null;
+  let customerSnapshotId = null;
+
+  if (payload?.customer) {
+    const c = payload.customer;
+    const { data: snapshot, error: snapshotError } = await supabase
+      .from("inv_t_projects")
+      .insert([{
+        client_name: c.client_name || "",
+        formatted_address: c.formatted_address || null,
+        address_line_1: c.address_line_1 || null,
+        city: c.city || null,
+        state: c.state || null,
+        state_code: c.state_code || null,
+        postal_code: c.postal_code || null,
+        country: c.country || null,
+        status_id: c.status_id || null,
+        delear: c.dealer || null,
+        invoice_no: c.invoice_number || null,
+        order_received_at: c.order_received_at || null,
+      }])
+      .select()
+      .single();
+
+    if (snapshotError) throw new Error(`Failed to save customer snapshot: ${snapshotError.message}`);
+    if (!snapshot) throw new Error("Failed to save customer snapshot: no data returned.");
+
+    customerSnapshotId = snapshot.id;
+    projectId = customerSnapshotId;
+  }
+
   // 1. Insert BOM header into inv_t_bom
   const { data: bom, error: bomError } = await supabase
     .from("inv_t_bom")
     .insert([{
-      project_id: payload?.projectId || null,
+      project_id: projectId,
       bom_no: payload?.bomNo || null,
       status_Id: payload?.statusId || null,
       remarks: payload?.remarks || null,
@@ -1173,8 +1303,20 @@ export async function saveProjectBomAction(payload) {
     .select()
     .single();
 
-  if (bomError) throw new Error(`Failed to save BOM: ${bomError.message}`);
-  if (!bom) throw new Error("Failed to save BOM: no data returned.");
+  if (bomError) {
+    // Rollback customer snapshot on BOM header failure
+    if (customerSnapshotId) {
+      await supabase.from("inv_t_projects").delete().eq("id", customerSnapshotId);
+    }
+    throw new Error(`Failed to save BOM: ${bomError.message}`);
+  }
+  if (!bom) {
+    // Rollback customer snapshot on BOM header failure
+    if (customerSnapshotId) {
+      await supabase.from("inv_t_projects").delete().eq("id", customerSnapshotId);
+    }
+    throw new Error("Failed to save BOM: no data returned.");
+  }
 
   const bomId = bom.bom_id;
 
@@ -1194,8 +1336,11 @@ export async function saveProjectBomAction(payload) {
       .insert(detailRows);
 
     if (detailsError) {
-      // Rollback header on line item failure
+      // Rollback header and customer snapshot on line item failure
       await supabase.from("inv_t_bom").delete().eq("bom_id", bomId);
+      if (customerSnapshotId) {
+        await supabase.from("inv_t_projects").delete().eq("id", customerSnapshotId);
+      }
       throw new Error(`Failed to save BOM line items: ${detailsError.message}`);
     }
   }
@@ -1209,7 +1354,7 @@ export async function loadProjectBomByIdAction(bomId) {
   // 1. Fetch BOM header with joined project info
   const { data: bom, error: bomError } = await supabase
     .from("inv_t_bom")
-    .select("*, proj_t_projects(client_name, formatted_address, city, state_code, address_line_1, state, postal_code, country, dealer, invoice_number, order_received_at)")
+    .select("*, inv_t_projects(client_name, formatted_address, city, state_code, address_line_1, state, postal_code, country, delear, invoice_no, order_received_at)")
     .eq("bom_id", bomId)
     .single();
 
@@ -1238,8 +1383,8 @@ export async function loadProjectBomByIdAction(bomId) {
     id: bom.bom_id,
     bomNo: bom.bom_no || "—",
     projectId: bom.project_id,
-    projectName: bom.proj_t_projects?.client_name || "—",
-    spec: bom.proj_t_projects?.formatted_address || "—",
+    projectName: bom.inv_t_projects?.client_name || "—",
+    spec: bom.inv_t_projects?.formatted_address || "—",
     statusId: bom.status_Id,
     statusName: "Draft",
     remarks: bom.remarks || "",
@@ -1247,18 +1392,18 @@ export async function loadProjectBomByIdAction(bomId) {
     createdAt: bom.created_at,
     bomTempId: bom.bom_temp_id || null,
     bomtSpec: bom.bomt_spec || null,
-    customer: bom.proj_t_projects ? {
-      clientName: bom.proj_t_projects.client_name,
-      formattedAddress: bom.proj_t_projects.formatted_address,
-      city: bom.proj_t_projects.city,
-      stateCode: bom.proj_t_projects.state_code,
-      addressLine1: bom.proj_t_projects.address_line_1,
-      state: bom.proj_t_projects.state,
-      postalCode: bom.proj_t_projects.postal_code,
-      country: bom.proj_t_projects.country,
-      dealer: bom.proj_t_projects.dealer,
-      invoiceNumber: bom.proj_t_projects.invoice_number,
-      orderReceivedAt: bom.proj_t_projects.order_received_at,
+    customer: bom.inv_t_projects ? {
+      clientName: bom.inv_t_projects.client_name,
+      formattedAddress: bom.inv_t_projects.formatted_address,
+      city: bom.inv_t_projects.city,
+      stateCode: bom.inv_t_projects.state_code,
+      addressLine1: bom.inv_t_projects.address_line_1,
+      state: bom.inv_t_projects.state,
+      postalCode: bom.inv_t_projects.postal_code,
+      country: bom.inv_t_projects.country,
+      dealer: bom.inv_t_projects.delear,
+      invoiceNumber: bom.inv_t_projects.invoice_no,
+      orderReceivedAt: bom.inv_t_projects.order_received_at,
     } : null,
     lineItems: details.map((d) => ({
       id: d.bom_details_id,
@@ -1340,7 +1485,7 @@ export async function loadProjectBomDataAction() {
 
   const { data, error } = await supabase
     .from("inv_t_bom")
-    .select("*, proj_t_projects(client_name, formatted_address, city, state_code)")
+    .select("*, inv_t_projects(client_name, formatted_address, city, state_code)")
     .order("created_at", { ascending: false });
 
   if (error) {
@@ -1352,8 +1497,8 @@ export async function loadProjectBomDataAction() {
     id: r.bom_id,
     bomNo: r.bom_no || "—",
     projectId: r.project_id,
-    projectName: r.proj_t_projects?.client_name || "—",
-    spec: r.proj_t_projects?.formatted_address || "—",
+    projectName: r.inv_t_projects?.client_name || "—",
+    spec: r.inv_t_projects?.formatted_address || "—",
     statusId: r.status_Id,
     statusName: "Draft",
     remarks: r.remarks || "",
@@ -1612,7 +1757,7 @@ export async function loadBOMsForReleaseAction() {
 
   const { data, error } = await supabase
     .from("inv_t_bom")
-    .select("*, proj_t_projects(client_name, formatted_address)")
+    .select("*, inv_t_projects(client_name, formatted_address)")
     .order("created_at", { ascending: false });
 
   if (error) {
@@ -1675,8 +1820,8 @@ export async function loadBOMsForReleaseAction() {
     return {
       id: bom.bom_id,
       bomNo: bom.bom_no || "—",
-      projectName: bom.proj_t_projects?.client_name || "—",
-      spec: bom.proj_t_projects?.formatted_address || bom.bomt_spec || "—",
+      projectName: bom.inv_t_projects?.client_name || "—",
+      spec: bom.inv_t_projects?.formatted_address || bom.bomt_spec || "—",
       createdAt: bom.created_at,
       lineItems: bomDetails.map((d) => {
         const key = `${bom.bom_no}_${d.item_id}`;

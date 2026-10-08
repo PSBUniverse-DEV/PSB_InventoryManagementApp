@@ -162,7 +162,7 @@ export function printDocument({
       padding: 8px 10px;
       font-size: 13px;
     }
-    .meta-table td.label { background: var(--light-gray); font-weight: bold; width: 15%; }
+    .meta-table td.label { background: var(--light-gray); font-weight: bold; width: 15%; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     .meta-table td.value { width: 35%; }
 
     .addr-table td { width: 50%; vertical-align: top; padding: 12px 14px; }
@@ -172,6 +172,8 @@ export function printDocument({
     .items-table th {
       background: var(--navy); color: #ffffff; text-align: center;
       font-size: 13px; padding: 10px;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
     }
     .items-table th.desc-col, .items-table td.desc-col { text-align: left; }
     .items-table td { text-align: center; height: 26px; }
@@ -180,7 +182,7 @@ export function printDocument({
     .totals-table { width: 45%; margin-left: auto; margin-top: 10px; }
     .totals-table td.label { text-align: right; width: 70%; }
     .totals-table td.value { width: 30%; }
-    .totals-table tr.total-row td { background: var(--light-gray); font-weight: bold; }
+    .totals-table tr.total-row td { background: var(--light-gray); font-weight: bold; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 
     .notes-label { font-style: italic; color: #777777; font-size: 13px; margin: 20px 0 6px 0; }
     .notes-line { border-bottom: 1px solid var(--border); height: 24px; }

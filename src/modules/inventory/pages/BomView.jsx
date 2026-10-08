@@ -624,6 +624,7 @@ export default function BomView({ initialData, hideSidebar = false }) {
         bomTempId: bomTempId || null,
         bomtSpec: projectSpec || null,
         lineItems,
+        customer: selectedCustomer,
       });
 
       setSavedBomId(savedBom?.bom_id || null);
@@ -772,6 +773,7 @@ export default function BomView({ initialData, hideSidebar = false }) {
         label: "UOM",
         sortable: true,
         align: "center",
+        width: 30,
         render: (row) => {
           const unit = units.find((u) => String(u.id) === String(row.uomId));
           return (
@@ -786,6 +788,7 @@ export default function BomView({ initialData, hideSidebar = false }) {
         label: "Required",
         sortable: true,
         align: "center",
+        width: 100,
         render: (row) => (
           <input
             type="number"
@@ -803,6 +806,7 @@ export default function BomView({ initialData, hideSidebar = false }) {
         label: "Available",
         sortable: true,
         align: "center",
+        width: 100,
         render: (row) => (
           <span className={row._available < (Number(row.requiredQty) || 0) ? "bom-short" : ""}>
             {row._available}
