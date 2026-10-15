@@ -1,6 +1,6 @@
 "use client";
 
-import { forwardRef, useId, useMemo, useState } from "react";
+import { forwardRef, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import Form from "react-bootstrap/Form";
 import { Dropdown as BootstrapDropdown } from "react-bootstrap";
@@ -27,7 +27,17 @@ MultiSelectToggle.displayName = "MultiSelectToggle";
 // FilterPanel's scrollable popover). react-bootstrap still supplies
 // positioning props (style, placement) to this component as normal; only
 // the DOM location changes, not the Popper positioning logic.
+// There is no document while the server renders the page. This reads false on
+// the server and during hydration, then true in the browser, so the portal is
+// only created where document.body exists.
+const subscribeToNothing = () => () => {};
+const readIsBrowser = () => true;
+const readIsServer = () => false;
+
 const PortalMenu = forwardRef(({ children, style, className, "aria-labelledby": labeledBy }, ref) => {
+  const isBrowser = useSyncExternalStore(subscribeToNothing, readIsBrowser, readIsServer);
+  if (!isBrowser) return null;
+
   return createPortal(
     <div
       ref={ref}
@@ -43,6 +53,9 @@ const PortalMenu = forwardRef(({ children, style, className, "aria-labelledby": 
 });
 PortalMenu.displayName = "PortalMenu";
 
+// Lists longer than this get the search box without asking for it.
+const SEARCH_AUTO_THRESHOLD = 8;
+
 function MultiSelectDropdown({
   options = [],
   selectedValues = [],
@@ -51,10 +64,30 @@ function MultiSelectDropdown({
   menuStyle,
   className = "",
   disabled = false,
+  searchable,
+  searchPlaceholder = "Search...",
+  emptyMessage = "No matches.",
   ...props
 }) {
   const [show, setShow] = useState(false);
+  const [query, setQuery] = useState("");
+  const searchRef = useRef(null);
   const instanceId = useId();
+
+  // `searchable` forces the search box on or off. When it is not set, the box
+  // appears on its own for lists long enough to need it.
+  const showSearch = searchable ?? options.length > SEARCH_AUTO_THRESHOLD;
+  const visibleOptions = useMemo(() => {
+    const term = query.trim().toLowerCase();
+    if (!showSearch || !term) return options;
+    return options.filter((option) => String(option.label ?? "").toLowerCase().includes(term));
+  }, [options, query, showSearch]);
+
+  useEffect(() => {
+    if (!show || !showSearch) return undefined;
+    const frame = window.requestAnimationFrame(() => searchRef.current?.focus());
+    return () => window.cancelAnimationFrame(frame);
+  }, [show, showSearch]);
 
   const selectedSet = useMemo(() => new Set(selectedValues || []), [selectedValues]);
   const selectedLabels = useMemo(() => {
@@ -77,7 +110,10 @@ function MultiSelectDropdown({
   return (
     <BootstrapDropdown
       show={show}
-      onToggle={(nextShow) => setShow(nextShow)}
+      onToggle={(nextShow) => {
+        setShow(nextShow);
+        if (!nextShow) setQuery("");
+      }}
       className={className}
       {...props}
     >
@@ -98,11 +134,32 @@ function MultiSelectDropdown({
           padding: 8,
           maxHeight: 320,
           overflowY: "auto",
-          zIndex: 2000,
+          // Above the shared Modal (z-index 9999) so the menu works inside one.
+          zIndex: 10000,
           ...menuStyle,
         }}
       >
-        {options.map((option) => (
+        {showSearch ? (
+          <div style={{ position: "sticky", top: -8, margin: "-8px -8px 6px", padding: 8, background: "#ffffff", zIndex: 1 }}>
+            {/* type="text": the dropdown ignores Escape from type="search" inputs. */}
+            <Form.Control
+              ref={searchRef}
+              type="text"
+              size="sm"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") event.preventDefault();
+              }}
+              placeholder={searchPlaceholder}
+              aria-label={searchPlaceholder}
+            />
+          </div>
+        ) : null}
+        {showSearch && visibleOptions.length === 0 ? (
+          <div className="small text-muted" style={{ padding: "4px 0" }}>{emptyMessage}</div>
+        ) : null}
+        {visibleOptions.map((option) => (
           <div key={option.value} style={{ padding: "4px 0" }}>
             <Form.Check
               type="checkbox"
@@ -119,4 +176,5 @@ function MultiSelectDropdown({
   );
 }
 
+export { MultiSelectToggle, PortalMenu };
 export default MultiSelectDropdown;

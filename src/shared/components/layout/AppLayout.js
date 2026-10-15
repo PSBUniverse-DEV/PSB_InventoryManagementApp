@@ -16,7 +16,7 @@ import { SSO_ENABLED, IS_MODULE, logout as ssoLogout, redirectToLogin } from "@/
 import { isLoginPath, validateRedirectUrl } from "@/core/auth/redirect-validator";
 import { toastError } from "@/shared/utils/toast";
 
-const CORE_PORTAL_URL = process.env.NEXT_PUBLIC_CORE_PORTAL_URL || "https://www.psbuniverse.com";
+const CORE_PORTAL_URL = (process.env.NEXT_PUBLIC_CORE_PORTAL_URL || "https://www.psbuniverse.com").replace(/\/+$/, "");
 const ENV = process.env.NEXT_PUBLIC_ENV || "local";
 const IS_PRODUCTION = ENV === "prod";
 
@@ -26,6 +26,8 @@ const COMPLETE_FADE_MS = 320;
 const RESET_MS = 220;
 const START_PROGRESS = 0.26;
 const MAX_IN_FLIGHT_PROGRESS = 0.9;
+// Polled in the background (every 30s and on tab focus), so they must not flash the navbar loader.
+const BACKGROUND_API_PATHS = new Set(["/api/auth/introspect"]);
 
 function clearAccessTokenCookie() {
   if (typeof document === "undefined") return;
@@ -50,6 +52,7 @@ function isTrackableApiRequest(input) {
     const parsed = new URL(requestUrl, window.location.origin);
     if (parsed.origin !== window.location.origin) return false;
     if (!parsed.pathname.startsWith("/api/")) return false;
+    if (BACKGROUND_API_PATHS.has(parsed.pathname)) return false;
 
     return true;
   } catch {
