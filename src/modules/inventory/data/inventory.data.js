@@ -18,7 +18,6 @@ export const INVENTORY_VIEWS = [
    { id: "procurement", label: "Procurement", icon: "ClipboardList", group: "Transactions" },
    { id: "poReceiving", label: "Receiving", icon: "ArrowDownCircle", group: "Transactions" },
    { id: "bomRelease", label: "Releasing", icon: "ArrowUpCircle", group: "Transactions" },
-   { id: "purchaseRequests", label: "PR Approvals", icon: "ClipboardCheck", group: "Transactions" },
   { id: "materials", label: "Materials", icon: "Package", group: "Master Data" },
   { id: "equipment", label: "Equipment", icon: "Wrench", group: "Master Data" },
   { id: "warehouses", label: "Warehouse", icon: "Warehouse", group: "Master Data" },

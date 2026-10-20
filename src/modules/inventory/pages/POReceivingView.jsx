@@ -3,10 +3,10 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
-  ArrowDownCircle, RefreshCw, Save,
+  ArrowDownCircle, Eye, EyeOff, RefreshCw, Save,
 } from "lucide-react";
 import {
-  Button, Card, Input, Badge, toastError, toastSuccess,
+  Button, Card, Input, StatusBadge, toastError, toastSuccess,
 } from "@/shared/components/ui";
 import TableZ from "@/shared/components/ui/table/TableZ";
 import {
@@ -38,6 +38,53 @@ function formatDate(value) {
   }
 }
 
+// Map PO status names to StatusBadge semantic keys (display label preserved).
+const PO_STATUS_KEYS = {
+  draft: "draft",
+  saved: "draft",
+  pending: "pending",
+  "pending approval": "pending",
+  "for approval": "pending",
+  submitted: "pending",
+  "pending review": "pending",
+  "for review": "pending",
+  approved: "approved",
+  partial: "processing",
+  "in progress": "processing",
+  completed: "completed",
+  fulfilled: "completed",
+  received: "completed",
+  cancelled: "cancelled",
+  canceled: "cancelled",
+  rejected: "rejected",
+  recalled: "inactive",
+  returned: "inactive",
+};
+
+function PoStatusBadge({ status }) {
+  const key = String(status || "").toLowerCase();
+  return <StatusBadge status={PO_STATUS_KEYS[key] || "inactive"} label={status || "—"} />;
+}
+
+function ReceivedProgress({ lineItems }) {
+  const items = lineItems || [];
+  const ordered = items.reduce((sum, li) => sum + (Number(li.orderedQty) || 0), 0);
+  const received = items.reduce((sum, li) => sum + (Number(li.receivedQty) || 0), 0);
+  const pct = ordered > 0 ? Math.min(100, Math.round((received / ordered) * 100)) : 0;
+
+  return (
+    <div className="item-progress-cell" title={`${received} of ${ordered} units received`}>
+      <span className="item-progress-text">{received}/{ordered}</span>
+      <div className="item-progress-track">
+        <div
+          className={`item-progress-fill${pct >= 100 ? " is-complete" : ""}`}
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Main View
 // ---------------------------------------------------------------------------
@@ -48,6 +95,7 @@ export default function POReceivingView({ initialData, hideSidebar = false }) {
   const [openPOs, setOpenPOs] = useState([]);
   const [selectedPO, setSelectedPO] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [showCompleted, setShowCompleted] = useState(false);
 
   const warehouses = data?.warehouses || [];
 
@@ -81,6 +129,16 @@ export default function POReceivingView({ initialData, hideSidebar = false }) {
   }, [loadPOs]);
 
   const refresh = useCallback(() => router.refresh(), [router]);
+
+  // ─── Show/hide completed POs ───────────────────────────────
+
+  const visiblePOs = useMemo(
+    () =>
+      showCompleted
+        ? openPOs
+        : openPOs.filter((p) => String(p.status || "").toLowerCase() !== "completed"),
+    [openPOs, showCompleted],
+  );
 
   // ─── PO selection ──────────────────────────────────────────
 
@@ -137,14 +195,20 @@ export default function POReceivingView({ initialData, hideSidebar = false }) {
 
     setIsBusy(true);
     try {
-      await receivePOItemsAction(selectedPO.id, {
+      const result = await receivePOItemsAction(selectedPO.id, {
         items,
         warehouseId: form.warehouseId,
         deliveryNo: form.deliveryNo || null,
         remarks: form.remarks || null,
       });
 
-      toastSuccess(`${items.length} item(s) received for ${selectedPO.poNo}.`);
+      if (result?.statusName === "Completed") {
+        toastSuccess(
+          `${items.length} item(s) received for ${selectedPO.poNo}. All items received — status updated to Completed.`,
+        );
+      } else {
+        toastSuccess(`${items.length} item(s) received for ${selectedPO.poNo}.`);
+      }
       // Reset receive qty inputs to remaining quantities
       const resetQtys = {};
       (selectedPO.lineItems || []).forEach((li) => {
@@ -155,12 +219,19 @@ export default function POReceivingView({ initialData, hideSidebar = false }) {
       setForm((prev) => ({ ...prev, deliveryNo: "", remarks: "" }));
       refresh();
       loadPOs();
+      // If the PO just became fully received and completed POs are hidden,
+      // clear the selection so the form doesn't point at a hidden row.
+      if (result?.statusName === "Completed" && !showCompleted) {
+        setSelectedPO(null);
+        setReceiveQtys({});
+        setForm({ warehouseId: "", deliveryNo: "", remarks: "" });
+      }
     } catch (err) {
       toastError(err?.message || "Failed to record receipt.", "error");
     } finally {
       setIsBusy(false);
     }
-  }, [selectedPO, receiveQtys, form, refresh, loadPOs]);
+  }, [selectedPO, receiveQtys, form, refresh, loadPOs, showCompleted]);
 
   // ─── PO list columns ───────────────────────────────────────
 
@@ -170,9 +241,30 @@ export default function POReceivingView({ initialData, hideSidebar = false }) {
         key: "poNo",
         label: "PO No.",
         sortable: true,
+        width: 100,
         render: (row) => (
           <span style={{ fontWeight: 600, fontFamily: "var(--psb-mono, monospace)" }}>
             {row.poNo || "—"}
+          </span>
+        ),
+      },
+      {
+        key: "supplierName",
+        label: "Supplier",
+        sortable: true,
+        width: 130,
+        render: (row) => (
+          <span style={{ fontWeight: 500 }}>{row.supplierName || "—"}</span>
+        ),
+      },
+      {
+        key: "createdAt",
+        label: "Order Date",
+        sortable: true,
+        width: 105,
+        render: (row) => (
+          <span style={{ fontSize: "0.82rem", color: "var(--psb-muted)" }}>
+            {formatDate(row.createdAt)}
           </span>
         ),
       },
@@ -181,11 +273,27 @@ export default function POReceivingView({ initialData, hideSidebar = false }) {
         label: "Status",
         sortable: true,
         align: "center",
+        width: 105,
+        render: (row) => <PoStatusBadge status={row.status} />,
+      },
+      {
+        key: "estTotalCost",
+        label: "Est. Total",
+        sortable: true,
+        align: "right",
+        width: 96,
         render: (row) => (
-          <Badge variant={row.status === "Approved" ? "active" : "pending"}>
-            {row.status || "—"}
-          </Badge>
+          <span style={{ fontFamily: "var(--psb-mono, monospace)" }}>
+            {formatCurrency(row.estTotalCost)}
+          </span>
         ),
+      },
+      {
+        key: "progress",
+        label: "Received",
+        align: "center",
+        width: 120,
+        render: (row) => <ReceivedProgress lineItems={row.lineItems} />,
       },
     ],
     [],
@@ -339,18 +447,29 @@ export default function POReceivingView({ initialData, hideSidebar = false }) {
       {/* ═══ TWO-PANEL LAYOUT ═══ */}
       <div className="receiving-split-layout">
         {/* ─── LEFT PANEL: PO List Table ─────────────────────── */}
-        <div className="receiving-left-panel">
+        <div className="receiving-left-panel receiving-left-panel--wide">
           <Card className="bom-table-card" style={{ height: "100%" }}>
             <div className="bom-table-toolbar">
               <span className="bom-table-title">Purchase Orders</span>
             </div>
             <TableZ
-              data={openPOs}
+              data={visiblePOs}
               columns={poListColumns}
               rowIdKey="id"
               selectedRowId={selectedPO?.id || null}
               onRowClick={(row) => handleSelectPO(row.id)}
               searchPlaceholder="Search POs..."
+              searchToolbarAction={
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={showCompleted ? "secondary" : "ghost"}
+                  aria-pressed={showCompleted}
+                  onClick={() => setShowCompleted((v) => !v)}
+                >
+                  {showCompleted ? <Eye size={14} /> : <EyeOff size={14} />} Show Completed
+                </Button>
+              }
               emptyMessage={loading ? "Loading..." : "No open purchase orders."}
               loading={loading}
             />
@@ -368,9 +487,7 @@ export default function POReceivingView({ initialData, hideSidebar = false }) {
                     <h3 style={{ margin: 0, fontSize: "1.1rem", fontWeight: 700 }}>
                       {selectedPO.poNo}
                     </h3>
-                    <Badge variant={selectedPO.status === "Approved" ? "active" : "pending"}>
-                      {selectedPO.status}
-                    </Badge>
+                    <PoStatusBadge status={selectedPO.status} />
                   </div>
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.5rem", fontSize: "0.85rem" }}>
                     <div>
@@ -441,30 +558,29 @@ export default function POReceivingView({ initialData, hideSidebar = false }) {
                 </div>
               </Card>
 
-              {/* Summary Metrics */}
-              <div className="inventory-stat-row" style={{ marginBottom: "1rem" }}>
-                <div className="inventory-stat-card">
-                  <div className="inventory-stat-label">Items</div>
-                  <div className="inventory-stat-value" style={{ color: "var(--psb-gold)" }}>
-                    {metrics.totalItems}
-                  </div>
-                </div>
-                <div className="inventory-stat-card">
-                  <div className="inventory-stat-label">Qty to Receive</div>
-                  <div className="inventory-stat-value" style={{ color: "var(--psb-gold)" }}>
-                    {metrics.totalToReceive}
-                  </div>
-                </div>
-                <div className="inventory-stat-card">
-                  <div className="inventory-stat-label">Receiving Cost</div>
-                  <div className="inventory-stat-value" style={{ color: "var(--psb-gold)" }}>
-                    {formatCurrency(metrics.totalCost)}
-                  </div>
-                </div>
-              </div>
-
-              {/* Line Items Table */}
+              {/* Line Items Table (summary metrics strip lives inside the panel) */}
               <Card className="bom-table-card" style={{ marginBottom: "1rem" }}>
+                {/* Summary Metrics */}
+                <div className="inventory-stat-row" style={{ margin: "0.75rem", gridTemplateColumns: "repeat(3, 1fr)" }}>
+                  <Card className="inventory-stat-card inventory-stat-card--emph">
+                    <div className="inventory-stat-label">Items</div>
+                    <div className="inventory-stat-value" style={{ color: "var(--psb-gold)" }}>
+                      {metrics.totalItems}
+                    </div>
+                  </Card>
+                  <Card className="inventory-stat-card inventory-stat-card--emph">
+                    <div className="inventory-stat-label">Qty to Receive</div>
+                    <div className="inventory-stat-value" style={{ color: "var(--psb-gold)" }}>
+                      {metrics.totalToReceive}
+                    </div>
+                  </Card>
+                  <Card className="inventory-stat-card inventory-stat-card--emph">
+                    <div className="inventory-stat-label">Receiving Cost</div>
+                    <div className="inventory-stat-value" style={{ color: "var(--psb-gold)" }}>
+                      {formatCurrency(metrics.totalCost)}
+                    </div>
+                  </Card>
+                </div>
                 <div className="bom-table-toolbar">
                   <span className="bom-table-title">Line Items</span>
                 </div>

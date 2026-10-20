@@ -67,14 +67,18 @@ export default function PurchaseRequestApprovalsView({ initialData }) {
     if (!selectedRow || !decision) return;
     setIsBusy(true);
     try {
-      await actOnPurchaseRequestApprovalAction({
+      const result = await actOnPurchaseRequestApprovalAction({
         stageinstanceId: selectedRow.stageinstanceId,
         decision,
         comments,
         actorUserId: null, // Replace with current user id from session if available
         statusName: decision === "approve" ? "Approved" : "Rejected",
       });
-      toastSuccess(`Purchase Request ${decision === "approve" ? "approved" : "rejected"}.`);
+      if (decision === "approve") {
+        toastSuccess(result?.completed ? "Purchase Request fully approved." : "Purchase Request approved — sent to the next approver.");
+      } else {
+        toastSuccess("Purchase Request rejected — returned to the first stage for rework.");
+      }
       setSelectedRow(null);
       setDecision(null);
       setComments("");

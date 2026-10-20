@@ -4,15 +4,17 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   ClipboardList, FileText, Plus, RefreshCw, X, Save, Trash2,
-  ArrowLeft, TrendingUp, TrendingDown, Clock, CheckCircle,
+  ArrowLeft, TrendingUp, TrendingDown, Clock, CheckCircle, Eye,
   AlertTriangle, DollarSign, Package, Truck, BarChart3,
   ArrowRight,
 } from "lucide-react";
 import {
   Button, Card, Input, Modal, Badge, toastError, toastSuccess,
+  StatusBadge as SharedStatusBadge,
 } from "@/shared/components/ui";
 import TableZ from "@/shared/components/ui/table/TableZ";
-import { createPurchaseRequestAction, updatePurchaseRequestAction, createPurchaseOrderAction, updatePurchaseOrderAction } from "../data/inventory.actions";
+import { createPurchaseRequestAction, updatePurchaseRequestAction, createPurchaseOrderAction, updatePurchaseOrderAction, loadPurchaseRequestApprovalHistoryAction } from "../data/inventory.actions";
+import { formatDateTime } from "../data/inventory.data";
 import "./InventoryView.css";
 import "./SharedTransactionForm.css";
 
@@ -38,6 +40,14 @@ function generatePONo() {
 function displayValue(value) {
   if (value === null || value === undefined || value === "") return "—";
   return value;
+}
+
+function historyStatus(entry) {
+  if (entry?.isPending) return "pending";
+  const name = String(entry?.statusName || "").toLowerCase();
+  if (name.includes("reject")) return "rejected";
+  if (name.includes("approve") || name.includes("complete")) return "approved";
+  return "processing";
 }
 
 const DEFAULT_PR_EMPTY_ROWS = 5;
@@ -105,7 +115,7 @@ function StatusBadge({ name }) {
 // ---------------------------------------------------------------------------
 // Main View
 // ---------------------------------------------------------------------------
-export default function ProcurementView({ initialData, hideSidebar = false, onNavigate, defaultView = "dashboard", editingPr = null, initialPrId = null, editingPo = null, viewingPr = null, viewingPo = null }) {
+export default function ProcurementView({ initialData, hideSidebar = false, onNavigate, defaultView = "dashboard", editingPr = null, initialPrId = null, editingPo = null, viewingPr = null, viewingPo = null, onViewPurchaseRequest = null }) {
   const router = useRouter();
   const data = initialData;
   const [isBusy, setIsBusy] = useState(false);
@@ -120,6 +130,32 @@ export default function ProcurementView({ initialData, hideSidebar = false, onNa
   const isEditingPo = Boolean(editingPo);
   const isViewingPr = Boolean(viewingPr);
   const isViewingPo = Boolean(viewingPo);
+
+  // Sync the internal view when the parent switches the procurement default
+  // view (e.g., navigating from the dashboard to "View Purchase Request").
+  useEffect(() => {
+    setView(defaultView);
+  }, [defaultView]);
+
+  // Approval history for the viewed PR (right-side panel).
+  const [prHistory, setPrHistory] = useState([]);
+  const [prHistoryLoading, setPrHistoryLoading] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (view === "pr" && isViewingPr) {
+      const prId = viewingPr?.id ?? viewingPr?.pr_id;
+      setPrHistoryLoading(true);
+      loadPurchaseRequestApprovalHistoryAction(prId)
+        .then((res) => { if (!cancelled) setPrHistory(res?.history || []); })
+        .catch(() => { if (!cancelled) setPrHistory([]); })
+        .finally(() => { if (!cancelled) setPrHistoryLoading(false); });
+    } else {
+      setPrHistory([]);
+      setPrHistoryLoading(false);
+    }
+    return () => { cancelled = true; };
+  }, [view, isViewingPr, viewingPr]);
 
   const items = data?.items || [];
   const warehouses = data?.warehouses || [];
@@ -941,7 +977,7 @@ export default function ProcurementView({ initialData, hideSidebar = false, onNa
               <ArrowLeft size={14} /> Back to Purchase Requests
             </Button>
           </div>
-          <div className="tx-form-layout tx-form-layout--full">
+          <div className={`tx-form-layout ${isViewingPr ? "tx-form-layout--split" : "tx-form-layout--full"}`}>
             <div className="tx-form-main">
               <Card className="tx-form-card">
                 <div className="tx-form-card-header">
@@ -1014,6 +1050,47 @@ export default function ProcurementView({ initialData, hideSidebar = false, onNa
                 )}
               </Card>
             </div>
+            {isViewingPr && (
+              <aside className="tx-form-sidebar">
+                <Card className="tx-form-card">
+                  <h3 className="approval-history-title">Approval History</h3>
+                  {prHistoryLoading ? (
+                    <p className="text-muted small">Loading…</p>
+                  ) : prHistory.length > 0 ? (
+                    <div className="approval-history-list">
+                      {prHistory.map((h, i) => (
+                        <div key={h.stageinstanceId ?? i} className="approval-history-card">
+                          <div className="approval-history-card__header">
+                            <span className="approval-history-card__stage">{h.stageName || "—"}</span>
+                            <SharedStatusBadge status={historyStatus(h)} label={h.statusName || "Pending"} />
+                          </div>
+                          <div className="approval-history-card__body">
+                            <div className="approval-history-field">
+                              <span className="approval-history-field__label">Approver</span>
+                              <span className="approval-history-field__value">{h.approverName || "Awaiting action"}</span>
+                            </div>
+                            <div className="approval-history-field">
+                              <span className="approval-history-field__label">Date Assigned</span>
+                              <span className="approval-history-field__value">{h.createdAt ? formatDateTime(h.createdAt) : "—"}</span>
+                            </div>
+                            <div className="approval-history-field">
+                              <span className="approval-history-field__label">Date of Action</span>
+                              <span className="approval-history-field__value">{h.actedAt ? formatDateTime(h.actedAt) : "—"}</span>
+                            </div>
+                            <div className="approval-history-field">
+                              <span className="approval-history-field__label">Remarks</span>
+                              <span className="approval-history-field__value">{h.comments || "—"}</span>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-muted small">No history available.</p>
+                  )}
+                </Card>
+              </aside>
+            )}
           </div>
 
           <Modal
@@ -1241,6 +1318,7 @@ export default function ProcurementView({ initialData, hideSidebar = false, onNa
                 <thead>
                   <tr>
                     <th style={{ width: "40px" }}></th>
+                    <th style={{ width: "90px" }}>Actions</th>
                     <th>PR Number</th>
                     <th>Requester</th>
                     <th>Department</th>
@@ -1254,7 +1332,7 @@ export default function ProcurementView({ initialData, hideSidebar = false, onNa
                 <tbody>
                   {purchaseRequests.length === 0 && (
                     <tr className="proc-table-empty">
-                      <td colSpan={9}>
+                      <td colSpan={10}>
                         <div className="proc-empty-state">
                           <div className="proc-empty-state__icon">—</div>
                           <strong>No purchase requests found.</strong>
@@ -1276,6 +1354,11 @@ export default function ProcurementView({ initialData, hideSidebar = false, onNa
                           <td>
                             <span className="proc-expand-icon">{isExpanded ? "▼" : "▶"}</span>
                           </td>
+                          <td>
+                            <Button variant="outline-secondary" size="sm" onClick={(e) => { e.stopPropagation(); onViewPurchaseRequest ? onViewPurchaseRequest(pr) : undefined; }}>
+                              <Eye size={14} /> View
+                            </Button>
+                          </td>
                           <td className="fw-semibold">{pr.pr_no || prId}</td>
                           <td>{requester ? `${requester.first_name} ${requester.last_name}` : displayValue(pr.requestor_id)}</td>
                           <td>{department ? department.dept_name : displayValue(pr.dept_id)}</td>
@@ -1287,7 +1370,7 @@ export default function ProcurementView({ initialData, hideSidebar = false, onNa
                         </tr>
                         {isExpanded && (
                           <tr className="proc-detail-row">
-                            <td colSpan={9}>
+                            <td colSpan={10}>
                               <div className="proc-detail-panel">
                                 <h4 className="proc-detail-title">Requested Items</h4>
                                 <table className="proc-detail-table">

@@ -134,3 +134,104 @@
 .tx-form-page .form-control-sm {
   font-size: 0.85rem;
 }
+
+/* Two-column layout: form + approval-history sidebar */
+.tx-form-layout--split {
+  grid-template-columns: minmax(0, 1fr) 360px;
+  align-items: stretch;
+}
+
+.tx-form-sidebar {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  max-height: calc(100vh - 8rem);
+  overflow: hidden;
+}
+
+.tx-form-sidebar .tx-form-card {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.approval-history-title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  margin: 0 0 0.75rem;
+}
+
+.approval-history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.approval-history-card {
+  background: var(--color-surface, #fff);
+  border: 1px solid var(--color-border, #e0e0e0);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.approval-history-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--color-surface-alt, #f8f9fa);
+  border-bottom: 1px solid var(--color-border, #e0e0e0);
+}
+
+.approval-history-card__stage {
+  font-weight: 700;
+  font-size: 13px;
+  color: var(--color-text, #212529);
+}
+
+.approval-history-card__body {
+  padding: 10px 12px;
+}
+
+.approval-history-field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px 0;
+}
+
+.approval-history-field + .approval-history-field {
+  border-top: 1px dashed var(--color-border, #e0e0e0);
+}
+
+.approval-history-field__label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--color-text-muted, #6c757d);
+}
+
+.approval-history-field__value {
+  font-size: 13px;
+  color: var(--color-text, #212529);
+  line-height: 1.4;
+  word-break: break-word;
+}
+
+@media (max-width: 991px) {
+  .tx-form-layout--split {
+    grid-template-columns: 1fr;
+  }
+  .tx-form-sidebar {
+    display: block;
+    max-height: none;
+    overflow: visible;
+  }
+  .tx-form-sidebar .tx-form-card {
+    flex: none;
+    overflow-y: visible;
+  }
+}

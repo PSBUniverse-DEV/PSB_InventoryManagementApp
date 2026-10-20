@@ -322,6 +322,23 @@
   line-height: 1.1;
 }
 
+/* Emphasized KPI card (Receiving/Releasing summary strips) */
+.inventory-stat-card--emph {
+  border-radius: var(--psb-radius-8);
+  border-left: 4px solid var(--psb-gold);
+  background: #faf7f1;
+}
+
+.inventory-stat-card--emph .inventory-stat-label {
+  font-size: 0.7rem;
+  color: var(--psb-text);
+}
+
+.inventory-stat-card--emph .inventory-stat-value {
+  font-size: 2rem;
+  font-weight: 800;
+}
+
 /* ─── Proc-style table (Low stock alerts, matches procurement) ─── */
 
 .proc-section { margin-bottom: 18px; }
@@ -923,6 +940,19 @@
   max-width: 380px;
 }
 
+/* Wide variant — used by PO Receiving, whose table shows extra columns. */
+.receiving-left-panel--wide {
+  flex: 0 0 660px;
+  max-width: 660px;
+}
+
+@media (max-width: 1280px) {
+  .receiving-left-panel--wide {
+    flex: 0 0 520px;
+    max-width: 520px;
+  }
+}
+
 .receiving-right-panel {
   flex: 1;
   min-width: 0;
@@ -938,4 +968,54 @@
     max-width: none;
     width: 100%;
   }
+}
+
+/* ─── ITEM PROGRESS (PO receiving / BOM releasing lists) ──── */
+
+.item-progress-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.item-progress-text {
+  font-family: var(--psb-mono, monospace);
+  font-size: 0.78rem;
+  color: var(--psb-muted);
+  white-space: nowrap;
+}
+
+.item-progress-track {
+  width: 100%;
+  max-width: 96px;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--psb-status-inactive-bg);
+  overflow: hidden;
+}
+
+.item-progress-fill {
+  height: 100%;
+  border-radius: 3px;
+  background: var(--psb-status-processing);
+  transition: width 0.25s ease;
+}
+
+.item-progress-fill.is-complete {
+  background: var(--psb-status-completed);
+}
+
+/* Breathing room between card header and the TableZ search bar on receiving screens */
+.receiving-split-layout .psb-ui-table-search-shell {
+  margin-top: 0.65rem;
+}
+
+/* Restyle the search input: narrower + rounded like the standard psb-ui-input */
+.receiving-split-layout .psb-ui-table-shell.psb-ui-table--setup .psb-ui-searchbar {
+  max-width: 200px;
+}
+
+.receiving-split-layout .psb-ui-table-shell.psb-ui-table--setup .psb-ui-table-search-input {
+  border-radius: var(--psb-radius-8) !important;
 }

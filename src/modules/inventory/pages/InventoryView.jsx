@@ -357,10 +357,6 @@ export default function InventoryView({ initialData }) {
       setView("allMaterials");
       return;
     }
-    if (viewId === "purchaseRequests") {
-      router.push("/inventory/purchase-requests/approvals");
-      return;
-    }
     setView(viewId);
   }, [router]);
 
@@ -1104,7 +1100,22 @@ export default function InventoryView({ initialData }) {
         )}
 
         {view === "procurement" && (
-          <ProcurementView initialData={data} hideSidebar onNavigate={setView} defaultView={procurementDefaultView} editingPr={editingPr} initialPrId={poInitialPrId} editingPo={editingPo} viewingPr={viewingPr} viewingPo={viewingPo} />
+          <ProcurementView
+            initialData={data}
+            hideSidebar
+            onNavigate={setView}
+            defaultView={procurementDefaultView}
+            editingPr={editingPr}
+            initialPrId={poInitialPrId}
+            editingPo={editingPo}
+            viewingPr={viewingPr}
+            viewingPo={viewingPo}
+            onViewPurchaseRequest={(pr) => {
+              const lineItems = (data?.purchaseRequestItems || []).filter((i) => String(i.pr_id) === String(pr.id ?? pr.pr_id));
+              setViewingPr({ ...pr, lineItems });
+              setProcurementDefaultView("pr");
+            }}
+          />
         )}
 
         {view === "purchaseRequests" && (

@@ -3,10 +3,10 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
-  ArrowUpCircle, RefreshCw, X,
+  ArrowUpCircle, Eye, EyeOff, RefreshCw, X,
 } from "lucide-react";
 import {
-  Button, Card, Badge, toastError, toastSuccess,
+  Button, Card, StatusBadge, toastError, toastSuccess,
 } from "@/shared/components/ui";
 import TableZ from "@/shared/components/ui/table/TableZ";
 import {
@@ -32,6 +32,49 @@ function formatDate(value) {
   }
 }
 
+// Map BOM status names to StatusBadge semantic keys (display label preserved).
+const BOM_STATUS_KEYS = {
+  draft: "draft",
+  saved: "draft",
+  pending: "pending",
+  "pending approval": "pending",
+  "for approval": "pending",
+  allocated: "processing",
+  "in progress": "processing",
+  approved: "approved",
+  released: "completed",
+  completed: "completed",
+  cancelled: "cancelled",
+  canceled: "cancelled",
+  rejected: "rejected",
+  recalled: "inactive",
+  returned: "inactive",
+};
+
+function BomStatusBadge({ status }) {
+  const key = String(status || "").toLowerCase();
+  return <StatusBadge status={BOM_STATUS_KEYS[key] || "inactive"} label={status || "—"} />;
+}
+
+function ReleasedProgress({ lineItems }) {
+  const items = lineItems || [];
+  const required = items.reduce((sum, li) => sum + (Number(li.requiredQty) || 0), 0);
+  const released = items.reduce((sum, li) => sum + (Number(li.releasedQty) || 0), 0);
+  const pct = required > 0 ? Math.min(100, Math.round((released / required) * 100)) : 0;
+
+  return (
+    <div className="item-progress-cell" title={`${released} of ${required} units released`}>
+      <span className="item-progress-text">{released}/{required}</span>
+      <div className="item-progress-track">
+        <div
+          className={`item-progress-fill${pct >= 100 ? " is-complete" : ""}`}
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Main View
 // ---------------------------------------------------------------------------
@@ -42,6 +85,7 @@ export default function BOMReleaseView({ initialData, hideSidebar = false }) {
   const [boms, setBoms] = useState([]);
   const [selectedBOM, setSelectedBOM] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [showReleased, setShowReleased] = useState(false);
 
   const warehouses = data?.warehouses || [];
 
@@ -74,6 +118,16 @@ export default function BOMReleaseView({ initialData, hideSidebar = false }) {
   }, [loadBOMs]);
 
   const refresh = useCallback(() => router.refresh(), [router]);
+
+  // ─── Show/hide released BOMs ───────────────────────────────
+
+  const visibleBoms = useMemo(
+    () =>
+      showReleased
+        ? boms
+        : boms.filter((b) => String(b.status || "").toLowerCase() !== "released"),
+    [boms, showReleased],
+  );
 
   // ─── BOM selection ─────────────────────────────────────────
 
@@ -138,13 +192,19 @@ export default function BOMReleaseView({ initialData, hideSidebar = false }) {
 
     setIsBusy(true);
     try {
-      await releaseBOMItemsAction(selectedBOM.id, {
+      const result = await releaseBOMItemsAction(selectedBOM.id, {
         items,
         warehouseId: form.warehouseId,
         remarks: form.remarks || null,
       });
 
-      toastSuccess(`${items.length} item(s) released for ${selectedBOM.bomNo}.`);
+      if (result?.fullyReleased) {
+        toastSuccess(
+          `${items.length} item(s) released for ${selectedBOM.bomNo}. All items released — status updated to ${result.statusName || "Released"}.`,
+        );
+      } else {
+        toastSuccess(`${items.length} item(s) released for ${selectedBOM.bomNo}.`);
+      }
       // Reset release qty inputs to 0 for all line items
       const resetQtys = {};
       (selectedBOM.lineItems || []).forEach((li) => {
@@ -154,12 +214,17 @@ export default function BOMReleaseView({ initialData, hideSidebar = false }) {
       setForm((prev) => ({ ...prev, remarks: "" }));
       refresh();
       loadBOMs();
+      // If the BOM just became fully released and released BOMs are hidden,
+      // clear the selection so the form doesn't point at a hidden row.
+      if (result?.fullyReleased && !showReleased) {
+        handleClear();
+      }
     } catch (err) {
       toastError(err?.message || "Failed to record release.", "error");
     } finally {
       setIsBusy(false);
     }
-  }, [selectedBOM, releaseQtys, form, refresh, loadBOMs]);
+  }, [selectedBOM, releaseQtys, form, refresh, loadBOMs, showReleased, handleClear]);
 
   // ─── BOM list columns ──────────────────────────────────────
 
@@ -169,9 +234,30 @@ export default function BOMReleaseView({ initialData, hideSidebar = false }) {
         key: "bomNo",
         label: "BOM No.",
         sortable: true,
+        width: 100,
         render: (row) => (
           <span style={{ fontWeight: 600, fontFamily: "var(--psb-mono, monospace)" }}>
             {row.bomNo || "—"}
+          </span>
+        ),
+      },
+      {
+        key: "projectName",
+        label: "Customer",
+        sortable: true,
+        width: 150,
+        render: (row) => (
+          <span style={{ fontWeight: 500 }}>{row.projectName || "—"}</span>
+        ),
+      },
+      {
+        key: "createdAt",
+        label: "Date Created",
+        sortable: true,
+        width: 110,
+        render: (row) => (
+          <span style={{ fontSize: "0.82rem", color: "var(--psb-muted)" }}>
+            {formatDate(row.createdAt)}
           </span>
         ),
       },
@@ -180,11 +266,15 @@ export default function BOMReleaseView({ initialData, hideSidebar = false }) {
         label: "Status",
         sortable: true,
         align: "center",
-        render: (row) => (
-          <Badge variant={row.status === "Approved" ? "active" : "pending"}>
-            {row.status || "—"}
-          </Badge>
-        ),
+        width: 110,
+        render: (row) => <BomStatusBadge status={row.status} />,
+      },
+      {
+        key: "released",
+        label: "Released",
+        align: "center",
+        width: 120,
+        render: (row) => <ReleasedProgress lineItems={row.lineItems} />,
       },
     ],
     [],
@@ -319,18 +409,29 @@ export default function BOMReleaseView({ initialData, hideSidebar = false }) {
       {/* ═══ TWO-PANEL LAYOUT ═══ */}
       <div className="receiving-split-layout">
         {/* ─── LEFT PANEL: BOM List Table ────────────────────── */}
-        <div className="receiving-left-panel">
+        <div className="receiving-left-panel receiving-left-panel--wide">
           <Card className="bom-table-card" style={{ height: "100%" }}>
             <div className="bom-table-toolbar">
               <span className="bom-table-title">Bill of Materials</span>
             </div>
             <TableZ
-              data={boms}
+              data={visibleBoms}
               columns={bomListColumns}
               rowIdKey="id"
               selectedRowId={selectedBOM?.id || null}
               onRowClick={(row) => handleSelectBOM(row.id)}
               searchPlaceholder="Search BOMs..."
+              searchToolbarAction={
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={showReleased ? "secondary" : "ghost"}
+                  aria-pressed={showReleased}
+                  onClick={() => setShowReleased((v) => !v)}
+                >
+                  {showReleased ? <Eye size={14} /> : <EyeOff size={14} />} Show Released
+                </Button>
+              }
               emptyMessage={loading ? "Loading..." : "No BOMs available for release."}
               loading={loading}
             />
@@ -348,6 +449,7 @@ export default function BOMReleaseView({ initialData, hideSidebar = false }) {
                     <h3 style={{ margin: 0, fontSize: "1.1rem", fontWeight: 700 }}>
                       {selectedBOM.bomNo}
                     </h3>
+                    <BomStatusBadge status={selectedBOM.status} />
                   </div>
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.5rem", fontSize: "0.85rem" }}>
                     <div>
@@ -402,24 +504,23 @@ export default function BOMReleaseView({ initialData, hideSidebar = false }) {
                 </div>
               </Card>
 
-              {/* Summary Metrics */}
-              <div className="inventory-stat-row" style={{ marginBottom: "1rem" }}>
-                <div className="inventory-stat-card">
-                  <div className="inventory-stat-label">Items</div>
-                  <div className="inventory-stat-value" style={{ color: "var(--psb-gold)" }}>
-                    {metrics.totalItems}
-                  </div>
-                </div>
-                <div className="inventory-stat-card">
-                  <div className="inventory-stat-label">Qty to Release</div>
-                  <div className="inventory-stat-value" style={{ color: "var(--psb-gold)" }}>
-                    {metrics.totalToRelease}
-                  </div>
-                </div>
-              </div>
-
-              {/* Line Items Table */}
+              {/* Line Items Table (summary metrics strip lives inside the panel) */}
               <Card className="bom-table-card" style={{ marginBottom: "1rem" }}>
+                {/* Summary Metrics */}
+                <div className="inventory-stat-row" style={{ margin: "0.75rem" }}>
+                  <Card className="inventory-stat-card inventory-stat-card--emph">
+                    <div className="inventory-stat-label">Items</div>
+                    <div className="inventory-stat-value" style={{ color: "var(--psb-gold)" }}>
+                      {metrics.totalItems}
+                    </div>
+                  </Card>
+                  <Card className="inventory-stat-card inventory-stat-card--emph">
+                    <div className="inventory-stat-label">Qty to Release</div>
+                    <div className="inventory-stat-value" style={{ color: "var(--psb-gold)" }}>
+                      {metrics.totalToRelease}
+                    </div>
+                  </Card>
+                </div>
                 <div className="bom-table-toolbar">
                   <span className="bom-table-title">Line Items</span>
                 </div>

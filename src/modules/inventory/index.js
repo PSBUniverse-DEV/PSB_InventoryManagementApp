@@ -70,6 +70,7 @@ const inventoryModule = {
     { path: "/inventory/board/manage", page: "BoardManagementPage" },
     { path: "/inventory/transaction", page: "InventoryTransactionPage" },
     { path: "/inventory/purchase-requests/approvals", page: "PurchaseRequestApprovalsPage" },
+    { path: "/inventory/approvals", page: "ApprovalsPage" },
   ],
 };
 

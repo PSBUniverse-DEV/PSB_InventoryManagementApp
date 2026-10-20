@@ -190,8 +190,8 @@ export default function PurchaseRequestListView({ initialData, onNavigate, onCre
 
   const actions = useMemo(
     () => [
-      { key: "view", label: "View", type: "secondary", icon: "eye", onClick: (row) => toggleExpand(row.id) },
-      { key: "open", label: "Open", type: "secondary", icon: "file-lines", onClick: (row) => onOpenPurchaseRequest ? onOpenPurchaseRequest(row) : undefined },
+      { key: "items", label: "Items", type: "secondary", icon: "list", onClick: (row) => toggleExpand(row.id) },
+      { key: "view", label: "View", type: "secondary", icon: "eye", onClick: (row) => onOpenPurchaseRequest ? onOpenPurchaseRequest(row) : undefined },
       { key: "edit", label: "Edit", type: "secondary", icon: "edit", visible: (row) => canEditPr(row), onClick: (row) => handleEdit(row) },
       {
         key: "createPo",
