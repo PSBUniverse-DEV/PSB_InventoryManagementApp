@@ -1309,7 +1309,7 @@ export default function ProcurementView({ initialData, hideSidebar = false, onNa
               <p className="proc-section-desc">Latest purchase requests from the inventory procurement process.</p>
             </div>
             <Button variant="outline-secondary" size="sm" onClick={() => onNavigate ? onNavigate("purchaseRequests") : router.push("/inventory/purchase-requests")}>
-              View All <ArrowRight size={14} />
+              View All PR <ArrowRight size={14} />
             </Button>
           </div>
           <div className="proc-card">
@@ -1456,7 +1456,7 @@ export default function ProcurementView({ initialData, hideSidebar = false, onNa
               <p className="proc-section-desc">Purchase orders currently in progress.</p>
             </div>
             <Button variant="outline-secondary" size="sm" onClick={() => onNavigate ? onNavigate("purchaseOrders") : router.push("/inventory/purchase-orders")}>
-              View All <ArrowRight size={14} />
+              View All PO <ArrowRight size={14} />
             </Button>
           </div>
           <div className="proc-card">
