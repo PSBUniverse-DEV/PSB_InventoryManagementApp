@@ -398,6 +398,20 @@ export default function BomView({ initialData, hideSidebar = false }) {
     setCustomerDropdownOpen(false);
   }, []);
 
+  const defaultWarehouseId = allWarehouses.length > 0 ? String(allWarehouses[0].id) : "";
+
+  const handleCreateNew = useCallback(() => {
+    handleClearTemplate();
+    handleClearCustomer();
+    setAssignedWarehouse(defaultWarehouseId);
+    setTemplateDropdownOpen(false);
+    setShowCreateForm(false);
+    setCreateForm({ buildingSpec: "", size: "", gauge: "" });
+    setCustomerLoading(false);
+    setShowSaveBomConfirm(false);
+    setSavedBomId(null);
+  }, [defaultWarehouseId, handleClearTemplate, handleClearCustomer]);
+
   const handleLoadTemplate = useCallback(async (templateId) => {
     const targetId = templateId ?? selectedTemplate;
     if (!targetId) {
@@ -873,6 +887,15 @@ export default function BomView({ initialData, hideSidebar = false }) {
           </div>
         </div>
         <div className="bom-header-actions">
+          <Button
+            type="button"
+            variant="outline-secondary"
+            size="sm"
+            onClick={handleCreateNew}
+            disabled={busy || saveBomBusy || allocateBusy}
+          >
+            <RotateCcw size={14} /> Create New
+          </Button>
           <Button
             type="button"
             variant="outline-primary"
