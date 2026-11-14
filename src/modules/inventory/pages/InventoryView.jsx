@@ -10,8 +10,8 @@ import "./InventoryView.css";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Plus, Search, RefreshCw,
-  ArrowRightLeft, ArrowLeftRight, ArrowDownCircle, ArrowUpCircle,
-  AlertTriangle, MapPin, User,
+  ArrowRight, ArrowRightLeft, ArrowLeftRight, ArrowDownCircle, ArrowUpCircle,
+  AlertTriangle, Clock, MapPin, User,
   PackageCheck, Warehouse, Pencil, Trash2, Menu,
   LayoutDashboard, BarChart3, Package, Wrench,
   Truck, ClipboardList, Columns, Settings,
@@ -40,6 +40,7 @@ import {
   createSupplierAction,
   updateSupplierAction,
   deleteSupplierAction,
+  loadPendingPrApprovalsAction,
   recallPurchaseRequestAction,
   recallPurchaseOrderAction,
 } from "../data/inventory.actions";
@@ -182,6 +183,39 @@ export default function InventoryView({ initialData }) {
   }, [isBusy, refresh, showToast]);
 
   const items = data?.items || [];
+
+  // ─── Procurement highlights (main dashboard) ────────────
+  const [pendingApprovals, setPendingApprovals] = useState([]);
+  const [highlightsLoading, setHighlightsLoading] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setHighlightsLoading(true);
+    loadPendingPrApprovalsAction()
+      .then((res) => { if (!cancelled) setPendingApprovals(res?.approvals || []); })
+      .catch(() => { if (!cancelled) setPendingApprovals([]); })
+      .finally(() => { if (!cancelled) setHighlightsLoading(false); });
+    return () => { cancelled = true; };
+  }, []);
+
+  const purchaseStatusById = useMemo(() => {
+    const map = {};
+    (data?.purchaseRequestStatuses || []).forEach((s) => { map[String(s.id)] = s; });
+    return map;
+  }, [data]);
+
+  const poStatusName = useCallback((po) => {
+    if (po.status_id == null) return null;
+    return purchaseStatusById[String(po.status_id)]?.name || null;
+  }, [purchaseStatusById]);
+
+  const activePurchaseOrders = useMemo(() => {
+    const inactive = new Set(["rejected", "cancelled", "canceled", "denied", "completed", "received"]);
+    return (data?.purchaseOrders || []).filter((po) => {
+      const name = String(poStatusName(po) || "").toLowerCase();
+      return !inactive.has(name);
+    });
+  }, [data, poStatusName]);
 
   const materials = useMemo(
     () => items.filter((i) => String(i.classification || "").toLowerCase() === "material"),
@@ -790,6 +824,88 @@ export default function InventoryView({ initialData }) {
               <StatCard label="Equipment checked out" value={filteredCheckedOut} />
               <StatCard label="Active locations" value={(data?.warehouses || []).length} />
             </div>
+
+            {/* ── Procurement highlights ─────────────────── */}
+            <div className="proc-highlights-grid">
+              <article className="proc-highlight-card proc-highlight-card--warning">
+                <div className="proc-highlight-card__header">
+                  <div className="proc-highlight-card__title-row">
+                    <Clock size={16} className="proc-highlight-card__icon" aria-hidden="true" />
+                    <div>
+                      <h2 className="proc-highlight-card__title">On-going PR Approvals</h2>
+                      <p className="proc-highlight-card__subtitle">
+                        <span className="proc-highlight-count">{pendingApprovals.length}</span> awaiting approval
+                      </p>
+                    </div>
+                  </div>
+                  <Button variant="outline-secondary" size="sm" onClick={() => router.push("/inventory/purchase-requests/approvals")}>
+                    View Approvals <ArrowRight size={14} />
+                  </Button>
+                </div>
+                <div className="proc-highlight-card__body">
+                  {highlightsLoading ? (
+                    <div className="proc-highlight-empty">Loading approvals…</div>
+                  ) : pendingApprovals.length === 0 ? (
+                    <div className="proc-highlight-empty">No purchase requests awaiting approval.</div>
+                  ) : (
+                    <ul className="proc-highlight-list">
+                      {pendingApprovals.slice(0, 5).map((a) => (
+                        <li key={`${a.stageinstanceId}-${a.prId}`} className="proc-highlight-item">
+                          <div className="proc-highlight-item__main">
+                            <span className="proc-highlight-item__title">{a.prNo || a.prId || "—"}</span>
+                            <span className="proc-highlight-item__meta">
+                              {[a.requesterName, a.departmentName].filter(Boolean).join(" · ") || "—"}
+                            </span>
+                          </div>
+                          <div className="proc-highlight-item__right">
+                            <span className="proc-highlight-item__amount">${Number(a.totalAmount || 0).toFixed(2)}</span>
+                            {a.priority ? <span className="proc-highlight-item__priority">{a.priority}</span> : null}
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </article>
+
+              <article className="proc-highlight-card proc-highlight-card--success">
+                <div className="proc-highlight-card__header">
+                  <div className="proc-highlight-card__title-row">
+                    <Truck size={16} className="proc-highlight-card__icon" aria-hidden="true" />
+                    <div>
+                      <h2 className="proc-highlight-card__title">Open / Active Purchase Orders</h2>
+                      <p className="proc-highlight-card__subtitle">
+                        <span className="proc-highlight-count">{activePurchaseOrders.length}</span> in progress
+                      </p>
+                    </div>
+                  </div>
+                  <Button variant="outline-secondary" size="sm" onClick={() => setView("purchaseOrders")}>
+                    View All PO <ArrowRight size={14} />
+                  </Button>
+                </div>
+                <div className="proc-highlight-card__body">
+                  {activePurchaseOrders.length === 0 ? (
+                    <div className="proc-highlight-empty">No open purchase orders.</div>
+                  ) : (
+                    <ul className="proc-highlight-list">
+                      {activePurchaseOrders.slice(0, 5).map((po) => (
+                        <li key={String(po.id ?? po.po_id)} className="proc-highlight-item">
+                          <div className="proc-highlight-item__main">
+                            <span className="proc-highlight-item__title">{po.po_no || po.po_id || po.id || "—"}</span>
+                            <span className="proc-highlight-item__meta">{po.supplierName || "—"}</span>
+                          </div>
+                          <div className="proc-highlight-item__right">
+                            <span className="proc-highlight-item__amount">${Number(po.est_total_cost || 0).toFixed(2)}</span>
+                            {poStatusName(po) ? <span className="proc-highlight-item__status">{poStatusName(po)}</span> : null}
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </article>
+            </div>
+
             <div className="inventory-dashboard-panels">
               <section className="proc-section">
                 <div className="proc-section-header">
